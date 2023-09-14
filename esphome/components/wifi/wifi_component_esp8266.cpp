@@ -19,6 +19,7 @@ extern "C" {
 #include "lwip/apps/sntp.h"
 #if LWIP_IPV6
 #include "lwip/netif.h"  // struct netif
+#include <AddrList.h>
 #endif
 #if USE_ARDUINO_VERSION_CODE >= VERSION_CODE(3, 0, 0)
 #include "LwipDhcpServer.h"
@@ -164,11 +165,11 @@ bool WiFiComponent::wifi_sta_ip_config_(optional<ManualIP> manual_ip) {
 
   ip_addr_t dns;
   if (uint32_t(manual_ip->dns1) != 0) {
-    dns.addr = static_cast<uint32_t>(manual_ip->dns1);
+    ip_addr_set_ip4_u32_val(dns, static_cast<uint32_t>(manual_ip->dns1));
     dns_setserver(0, &dns);
   }
   if (uint32_t(manual_ip->dns2) != 0) {
-    dns.addr = static_cast<uint32_t>(manual_ip->dns2);
+    ip_addr_set_ip4_u32_val(dns, static_cast<uint32_t>(manual_ip->dns2));
     dns_setserver(1, &dns);
   }
 
@@ -324,6 +325,18 @@ bool WiFiComponent::wifi_sta_connect_(const WiFiAP &ap) {
     ESP_LOGV(TAG, "wifi_station_connect failed!");
     return false;
   }
+
+#if ENABLE_IPV6
+  for (bool configured = false; !configured;) {
+    for (auto addr : addrList) {
+      ESP_LOGV(TAG, "Address %s", addr.toString().c_str());
+      if ((configured = !addr.isLocal() && addr.isV6())) {
+        break;
+      }
+    }
+    delay(500);  // NOLINT
+  }
+#endif
 
   if (ap.get_channel().has_value()) {
     ret = wifi_set_channel(*ap.get_channel());
@@ -601,7 +614,7 @@ WiFiSTAConnectStatus WiFiComponent::wifi_sta_connect_status_() {
       return WiFiSTAConnectStatus::IDLE;
   }
 }
-bool WiFiComponent::wifi_scan_start_() {
+bool WiFiComponent::wifi_scan_start_(bool passive) {
   static bool first_scan = false;
 
   // enable STA
@@ -615,13 +628,21 @@ bool WiFiComponent::wifi_scan_start_() {
   config.channel = 0;
   config.show_hidden = 1;
 #if USE_ARDUINO_VERSION_CODE >= VERSION_CODE(2, 4, 0)
-  config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+  config.scan_type = passive ? WIFI_SCAN_TYPE_PASSIVE : WIFI_SCAN_TYPE_ACTIVE;
   if (first_scan) {
-    config.scan_time.active.min = 100;
-    config.scan_time.active.max = 200;
+    if (passive) {
+      config.scan_time.passive = 200;
+    } else {
+      config.scan_time.active.min = 100;
+      config.scan_time.active.max = 200;
+    }
   } else {
-    config.scan_time.active.min = 400;
-    config.scan_time.active.max = 500;
+    if (passive) {
+      config.scan_time.passive = 500;
+    } else {
+      config.scan_time.active.min = 400;
+      config.scan_time.active.max = 500;
+    }
   }
 #endif
   first_scan = false;
@@ -698,6 +719,7 @@ bool WiFiComponent::wifi_ap_ip_config_(optional<ManualIP> manual_ip) {
 #endif
 
   struct dhcps_lease lease {};
+  lease.enable = true;
   network::IPAddress start_address = info.ip.addr;
   start_address[3] += 99;
   lease.start_ip.addr = static_cast<uint32_t>(start_address);

@@ -125,10 +125,11 @@ void WiFiComponent::wifi_scan_result(void *env, const cyw43_ev_scan_result_t *re
   }
 }
 
-bool WiFiComponent::wifi_scan_start_() {
+bool WiFiComponent::wifi_scan_start_(bool passive) {
   this->scan_result_.clear();
   this->scan_done_ = false;
   cyw43_wifi_scan_options_t scan_options = {0};
+  scan_options.scan_type = passive ? 1 : 0;
   int err = cyw43_wifi_scan(&cyw43_state, &scan_options, nullptr, &s_wifi_scan_result);
   if (err) {
     ESP_LOGV(TAG, "cyw43_wifi_scan failed!");
@@ -174,7 +175,11 @@ network::IPAddress WiFiComponent::wifi_subnet_mask_() { return {WiFi.subnetMask(
 network::IPAddress WiFiComponent::wifi_gateway_ip_() { return {WiFi.gatewayIP()}; }
 network::IPAddress WiFiComponent::wifi_dns_ip_(int num) {
   const ip_addr_t *dns_ip = dns_getserver(num);
+#ifdef PIO_FRAMEWORK_ARDUINO_ENABLE_IPV6
+  return {dns_ip->u_addr.ip4.addr};
+#else
   return {dns_ip->addr};
+#endif
 }
 
 void WiFiComponent::wifi_loop_() {
