@@ -7,6 +7,7 @@
 #include <esp_netif.h>
 #include <esp_system.h>
 #include <esp_wifi.h>
+#include <esp_wifi_he.h>
 #include <esp_wifi_types.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
@@ -175,6 +176,7 @@ void WiFiComponent::wifi_pre_setup_() {
 #endif  // USE_WIFI_AP
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+  cfg.feature_caps |= CONFIG_ESP_WIFI_ENABLE_80211_AX;
   // cfg.nvs_enable = false;
   err = esp_wifi_init(&cfg);
   if (err != ERR_OK) {
@@ -306,13 +308,6 @@ bool WiFiComponent::wifi_sta_connect_(const WiFiAP &ap) {
   } else {
     conf.sta.threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK;
   }
-
-#if CONFIG_IDF_TARGET_ESP32C6
-  // Enable High Efficiency (Wi-Fi 6)
-  conf.sta.he_capable = true;
-  // Optimize power-saving for Wi-Fi 6
-  conf.sta.listen_interval = 10;
-#endif
 
 #ifdef USE_WIFI_WPA2_EAP
   if (ap.get_eap().has_value()) {
