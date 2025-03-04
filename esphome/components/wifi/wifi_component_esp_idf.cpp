@@ -307,6 +307,13 @@ bool WiFiComponent::wifi_sta_connect_(const WiFiAP &ap) {
     conf.sta.threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK;
   }
 
+#if CONFIG_IDF_TARGET_ESP32C6
+  // Enable High Efficiency (Wi-Fi 6)
+  conf.sta.he_capable = true;
+  // Optimize power-saving for Wi-Fi 6
+  conf.sta.listen_interval = 10;
+#endif
+
 #ifdef USE_WIFI_WPA2_EAP
   if (ap.get_eap().has_value()) {
     conf.sta.threshold.authmode = WIFI_AUTH_WPA2_ENTERPRISE;
