@@ -1,8 +1,7 @@
 import logging
 
-from esphome.const import CONF_INPUT, CONF_MODE, CONF_NUMBER
-
 import esphome.config_validation as cv
+from esphome.const import CONF_INPUT, CONF_MODE, CONF_NUMBER
 
 _ESP32H2_SPI_FLASH_PINS = {6, 7, 15, 16, 17, 18, 19, 20, 21}
 
@@ -46,7 +45,7 @@ def esp32_h2_validate_supports(value):
     is_input = mode[CONF_INPUT]
 
     if num < 0 or num > 27:
-        raise cv.Invalid(f"Invalid pin number: {value} (must be 0-27)")
+        raise cv.Invalid(f"Invalid pin number: {num} (must be 0-27)")
     if is_input:
         # All ESP32 pins support input mode
         pass

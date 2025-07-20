@@ -1,7 +1,7 @@
 #pragma once
 
-#include "esphome/core/helpers.h"
 #include "esphome/core/hal.h"
+#include "esphome/core/helpers.h"
 
 #ifdef USE_ESP32
 
@@ -20,6 +20,7 @@ class ESPBTUUID {
   static ESPBTUUID from_uint32(uint32_t uuid);
 
   static ESPBTUUID from_raw(const uint8_t *data);
+  static ESPBTUUID from_raw_reversed(const uint8_t *data);
 
   static ESPBTUUID from_raw(const std::string &data);
 

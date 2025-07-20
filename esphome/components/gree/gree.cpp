@@ -6,7 +6,15 @@ namespace gree {
 
 static const char *const TAG = "gree.climate";
 
-void GreeClimate::set_model(Model model) { this->model_ = model; }
+void GreeClimate::set_model(Model model) {
+  if (model == GREE_YX1FF) {
+    this->fan_modes_.insert(climate::CLIMATE_FAN_QUIET);   // YX1FF 4 speed
+    this->presets_.insert(climate::CLIMATE_PRESET_NONE);   // YX1FF sleep mode
+    this->presets_.insert(climate::CLIMATE_PRESET_SLEEP);  // YX1FF sleep mode
+  }
+
+  this->model_ = model;
+}
 
 void GreeClimate::transmit_state() {
   uint8_t remote_state[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00};
@@ -14,13 +22,21 @@ void GreeClimate::transmit_state() {
   remote_state[0] = this->fan_speed_() | this->operation_mode_();
   remote_state[1] = this->temperature_();
 
-  if (this->model_ == GREE_YAN) {
+  if (this->model_ == GREE_YAN || this->model_ == GREE_YX1FF || this->model_ == GREE_YAG) {
     remote_state[2] = 0x60;
     remote_state[3] = 0x50;
     remote_state[4] = this->vertical_swing_();
   }
 
-  if (this->model_ == GREE_YAC) {
+  if (this->model_ == GREE_YAG) {
+    remote_state[5] = 0x40;
+
+    if (this->vertical_swing_() == GREE_VDIR_SWING || this->horizontal_swing_() == GREE_HDIR_SWING) {
+      remote_state[0] |= (1 << 6);
+    }
+  }
+
+  if (this->model_ == GREE_YAC || this->model_ == GREE_YAG) {
     remote_state[4] |= (this->horizontal_swing_() << 4);
   }
 
@@ -36,9 +52,25 @@ void GreeClimate::transmit_state() {
     }
   }
 
+  if (this->model_ == GREE_YX1FF) {
+    if (this->fan_speed_() == GREE_FAN_TURBO) {
+      remote_state[2] |= GREE_FAN_TURBO_BIT;
+    }
+
+    if (this->preset_() == GREE_PRESET_SLEEP) {
+      remote_state[0] |= GREE_PRESET_SLEEP_BIT;
+    }
+  }
+
   // Calculate the checksum
-  if (this->model_ == GREE_YAN) {
+  if (this->model_ == GREE_YAN || this->model_ == GREE_YX1FF) {
     remote_state[7] = ((remote_state[0] << 4) + (remote_state[1] << 4) + 0xC0);
+  } else if (this->model_ == GREE_YAG) {
+    remote_state[7] =
+        ((((remote_state[0] & 0x0F) + (remote_state[1] & 0x0F) + (remote_state[2] & 0x0F) + (remote_state[3] & 0x0F) +
+           ((remote_state[4] & 0xF0) >> 4) + ((remote_state[5] & 0xF0) >> 4) + ((remote_state[6] & 0xF0) >> 4) + 0x0A) &
+          0x0F)
+         << 4);
   } else {
     remote_state[7] =
         ((((remote_state[0] & 0x0F) + (remote_state[1] & 0x0F) + (remote_state[2] & 0x0F) + (remote_state[3] & 0x0F) +
@@ -124,6 +156,23 @@ uint8_t GreeClimate::operation_mode_() {
 }
 
 uint8_t GreeClimate::fan_speed_() {
+  // YX1FF has 4 fan speeds -- we treat low as quiet and turbo as high
+  if (this->model_ == GREE_YX1FF) {
+    switch (this->fan_mode.value()) {
+      case climate::CLIMATE_FAN_QUIET:
+        return GREE_FAN_1;
+      case climate::CLIMATE_FAN_LOW:
+        return GREE_FAN_2;
+      case climate::CLIMATE_FAN_MEDIUM:
+        return GREE_FAN_3;
+      case climate::CLIMATE_FAN_HIGH:
+        return GREE_FAN_TURBO;
+      case climate::CLIMATE_FAN_AUTO:
+      default:
+        return GREE_FAN_AUTO;
+    }
+  }
+
   switch (this->fan_mode.value()) {
     case climate::CLIMATE_FAN_LOW:
       return GREE_FAN_1;
@@ -159,6 +208,22 @@ uint8_t GreeClimate::vertical_swing_() {
 
 uint8_t GreeClimate::temperature_() {
   return (uint8_t) roundf(clamp<float>(this->target_temperature, GREE_TEMP_MIN, GREE_TEMP_MAX));
+}
+
+uint8_t GreeClimate::preset_() {
+  // YX1FF has sleep preset
+  if (this->model_ == GREE_YX1FF) {
+    switch (this->preset.value()) {
+      case climate::CLIMATE_PRESET_NONE:
+        return GREE_PRESET_NONE;
+      case climate::CLIMATE_PRESET_SLEEP:
+        return GREE_PRESET_SLEEP;
+      default:
+        return GREE_PRESET_NONE;
+    }
+  }
+
+  return GREE_PRESET_NONE;
 }
 
 }  // namespace gree

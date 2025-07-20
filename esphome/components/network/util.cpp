@@ -1,12 +1,16 @@
 #include "util.h"
 #include "esphome/core/defines.h"
-
+#ifdef USE_NETWORK
 #ifdef USE_WIFI
 #include "esphome/components/wifi/wifi_component.h"
 #endif
 
 #ifdef USE_ETHERNET
 #include "esphome/components/ethernet/ethernet_component.h"
+#endif
+
+#ifdef USE_OPENTHREAD
+#include "esphome/components/openthread/openthread.h"
 #endif
 
 namespace esphome {
@@ -21,6 +25,11 @@ bool is_connected() {
 #ifdef USE_WIFI
   if (wifi::global_wifi_component != nullptr)
     return wifi::global_wifi_component->is_connected();
+#endif
+
+#ifdef USE_OPENTHREAD
+  if (openthread::global_openthread_component != nullptr)
+    return openthread::global_openthread_component->is_connected();
 #endif
 
 #ifdef USE_HOST
@@ -46,6 +55,10 @@ network::IPAddresses get_ip_addresses() {
   if (wifi::global_wifi_component != nullptr)
     return wifi::global_wifi_component->get_ip_addresses();
 #endif
+#ifdef USE_OPENTHREAD
+  if (openthread::global_openthread_component != nullptr)
+    return openthread::global_openthread_component->get_ip_addresses();
+#endif
   return {};
 }
 
@@ -63,3 +76,4 @@ std::string get_use_address() {
 
 }  // namespace network
 }  // namespace esphome
+#endif
