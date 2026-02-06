@@ -199,37 +199,54 @@ void EPaperT133A01::wait_busy_() {
 }
 
 bool EPaperT133A01::transfer_data() {
-  // Transfer pixel data to display in two passes
-  // Pass 1: Upper nibble, Pass 2: Lower nibble
-  // Must send full display dimensions, not just dirty region
+  // Transfer pixel data to display using two-pass method
+  // Pass 1: First half of each row (bytes 0 to width/4)
+  // Pass 2: Second half of each row (bytes width/4 to width/2)
+  // Each byte contains two 4-bit pixels which are individually color-mapped
 
   // Send 0x10 command (Write Data)
   this->command(0x10);
 
-  // Pass 1: Send upper nibbles (first pixel in each byte pair)
-  // Feed watchdog every ~100 rows to prevent timeout during large transfers
+  uint16_t bytes_per_row = this->width_ / 2;        // 800 bytes per row
+  uint16_t bytes_per_block_row = this->width_ / 4;  // 400 bytes per pass
+
+  // Pass 1: Send first half of each row with color mapping
   for (uint16_t y = 0; y < this->height_; y++) {
     if (y % 100 == 0) {
       App.feed_wdt();
     }
-    for (uint16_t x = 0; x < this->width_; x += 2) {
-      size_t pos = (x + y * this->width_) / 2;
+    for (uint16_t col = 0; col < bytes_per_block_row; col++) {
+      size_t pos = y * bytes_per_row + col;
       uint8_t pixel_byte = this->buffer_[pos];
+
+      // Extract and map both nibbles
       uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
-      this->write_byte(upper_nibble);
+      uint8_t lower_nibble = pixel_byte & 0x0F;
+      uint8_t mapped_upper = map_nibble_to_t133a01(upper_nibble);
+      uint8_t mapped_lower = map_nibble_to_t133a01(lower_nibble);
+
+      // Combine mapped values and send as single byte
+      this->write_byte((mapped_upper << 4) | mapped_lower);
     }
   }
 
-  // Pass 2: Send lower nibbles (second pixel in each byte pair)
+  // Pass 2: Send second half of each row with color mapping
   for (uint16_t y = 0; y < this->height_; y++) {
     if (y % 100 == 0) {
       App.feed_wdt();
     }
-    for (uint16_t x = 0; x < this->width_; x += 2) {
-      size_t pos = (x + y * this->width_) / 2;
+    for (uint16_t col = 0; col < bytes_per_block_row; col++) {
+      size_t pos = y * bytes_per_row + bytes_per_block_row + col;
       uint8_t pixel_byte = this->buffer_[pos];
+
+      // Extract and map both nibbles
+      uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
       uint8_t lower_nibble = pixel_byte & 0x0F;
-      this->write_byte(lower_nibble);
+      uint8_t mapped_upper = map_nibble_to_t133a01(upper_nibble);
+      uint8_t mapped_lower = map_nibble_to_t133a01(lower_nibble);
+
+      // Combine mapped values and send as single byte
+      this->write_byte((mapped_upper << 4) | mapped_lower);
     }
   }
 
