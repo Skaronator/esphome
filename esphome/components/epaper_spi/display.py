@@ -85,16 +85,24 @@ def spi_multi_device_schema(cs_pin_required=True, default_data_rate=cv.UNDEFINED
     """
     cs_pin_option = cv.Required if cs_pin_required else cv.Optional
     
-    # Accept any SPI component type (SPIComponent, QuadSPIComponent, OctalSPIComponent)
-    # Since QuadSPIComponent and OctalSPIComponent are C++ type aliases for SPIComponent,
-    # we can use cv.Any to accept IDs of any of these types
+    # Custom validator that accepts any SPI component type (SPIComponent, QuadSPIComponent, OctalSPIComponent)
+    # We need this because cv.use_id() does strict type checking, but at the C++ level,
+    # QuadSPIComponent and OctalSPIComponent are type aliases for SPIComponent
+    def validate_spi_id(value):
+        # Try to validate against each known SPI component type
+        for spi_type in [spi.SPIComponent, spi.QuadSPIComponent, spi.OctalSPIComponent]:
+            try:
+                return cv.use_id(spi_type)(value)
+            except cv.Invalid:
+                continue
+        # If none matched, raise an error
+        raise cv.Invalid(
+            f"ID '{value}' is not a valid SPI component (must be type: single, quad, or octal)"
+        )
+    
     return cv.Schema(
         {
-            cv.GenerateID(CONF_SPI_ID): cv.Any(
-                cv.use_id(spi.SPIComponent),
-                cv.use_id(spi.QuadSPIComponent),
-                cv.use_id(spi.OctalSPIComponent),
-            ),
+            cv.GenerateID(CONF_SPI_ID): validate_spi_id,
             cv.Optional(CONF_DATA_RATE, default=default_data_rate): spi.SPI_DATA_RATE_SCHEMA,
             cv.Optional(spi.CONF_SPI_MODE, default=default_mode): cv.enum(spi.SPI_MODE_OPTIONS, upper=True),
             cv.Optional(spi.CONF_RELEASE_DEVICE): cv.All(cv.boolean, cv.only_on_esp32),
