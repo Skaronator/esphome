@@ -199,28 +199,39 @@ void EPaperT133A01::wait_busy_() {
 }
 
 bool EPaperT133A01::transfer_data() {
-  // Transfer pixel data to display
-  // SPI device handles CS automatically
-
-  uint16_t start_x = this->x_low_;
-  uint16_t start_y = this->y_low_;
-  uint16_t end_x = this->x_high_;
-  uint16_t end_y = this->y_high_;
+  // Transfer pixel data to display in two passes
+  // Pass 1: Upper nibble (mapped), Pass 2: Lower nibble (mapped)
+  // Must send full display dimensions, not just dirty region
 
   // Send 0x10 command (Write Data)
   this->command(0x10);
 
-  // Send pixel data
+  // Pass 1: Send upper nibbles with color mapping
   // Feed watchdog every ~100 rows to prevent timeout during large transfers
-  for (uint16_t y = start_y; y < end_y; y++) {
+  for (uint16_t y = 0; y < this->height_; y++) {
     if (y % 100 == 0) {
       App.feed_wdt();
     }
-    for (uint16_t x = start_x; x < end_x; x += 2) {
+    for (uint16_t x = 0; x < this->width_; x += 2) {
       size_t pos = (x + y * this->width_) / 2;
-      if (pos < this->buffer_.size()) {
-        this->write_byte(this->buffer_[pos]);
-      }
+      uint8_t pixel_byte = this->buffer_[pos];
+      uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
+      uint8_t mapped_color = map_nibble_to_t133a01(upper_nibble);
+      this->write_byte(mapped_color);
+    }
+  }
+
+  // Pass 2: Send lower nibbles with color mapping
+  for (uint16_t y = 0; y < this->height_; y++) {
+    if (y % 100 == 0) {
+      App.feed_wdt();
+    }
+    for (uint16_t x = 0; x < this->width_; x += 2) {
+      size_t pos = (x + y * this->width_) / 2;
+      uint8_t pixel_byte = this->buffer_[pos];
+      uint8_t lower_nibble = pixel_byte & 0x0F;
+      uint8_t mapped_color = map_nibble_to_t133a01(lower_nibble);
+      this->write_byte(mapped_color);
     }
   }
 
