@@ -342,3 +342,77 @@ def test_busy_pin_input_mode_ssd1677(
     reset_pin_config = result[CONF_RESET_PIN]
     assert "mode" in reset_pin_config
     assert reset_pin_config["mode"]["output"] is True
+
+
+def test_quad_spi_configuration(
+    set_core_config: SetCoreConfigCallable,
+    set_component_config: Callable[[str, Any], None],
+) -> None:
+    """Test epaper_spi works with quad SPI bus."""
+    set_core_config(
+        PlatformFramework.ESP32_IDF,
+        platform_data={KEY_BOARD: "esp32dev", KEY_VARIANT: VARIANT_ESP32S3},
+    )
+
+    # Configure quad SPI component which is required for this test
+    set_component_config(
+        "spi",
+        {
+            "id": "quad_spi_bus",
+            "type": "quad",
+            "clk_pin": 7,
+            "data_pins": [9, 8, 39, 42],
+        },
+    )
+
+    # Configure epaper_spi with quad SPI bus
+    run_schema_validation(
+        {
+            "id": "test_display",
+            "model": "SPECTRA-E6",
+            "spi_id": "quad_spi_bus",
+            "dc_pin": 10,
+            "cs_pin": 41,
+            "dimensions": {
+                "width": 1600,
+                "height": 1200,
+            },
+        }
+    )
+
+
+def test_octal_spi_configuration(
+    set_core_config: SetCoreConfigCallable,
+    set_component_config: Callable[[str, Any], None],
+) -> None:
+    """Test epaper_spi works with octal SPI bus."""
+    set_core_config(
+        PlatformFramework.ESP32_IDF,
+        platform_data={KEY_BOARD: "esp32dev", KEY_VARIANT: VARIANT_ESP32S3},
+    )
+
+    # Configure octal SPI component which is required for this test
+    set_component_config(
+        "spi",
+        {
+            "id": "octal_spi_bus",
+            "type": "octal",
+            "clk_pin": 7,
+            "data_pins": [9, 8, 39, 42, 37, 38, 46, 47],
+        },
+    )
+
+    # Configure epaper_spi with octal SPI bus
+    run_schema_validation(
+        {
+            "id": "test_display",
+            "model": "ssd1677",
+            "spi_id": "octal_spi_bus",
+            "dc_pin": 10,
+            "cs_pin": 41,
+            "dimensions": {
+                "width": 200,
+                "height": 200,
+            },
+        }
+    )

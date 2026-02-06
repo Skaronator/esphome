@@ -1,7 +1,7 @@
 import re
 from typing import Any
 
-from esphome import pins
+from esphome import core, pins
 import esphome.codegen as cg
 from esphome.components.esp32 import (
     KEY_ESP32,
@@ -44,8 +44,8 @@ from esphome.types import ConfigType
 CODEOWNERS = ["@esphome/core", "@clydebarrow"]
 spi_ns = cg.esphome_ns.namespace("spi")
 SPIComponent = spi_ns.class_("SPIComponent", cg.Component)
-QuadSPIComponent = spi_ns.class_("QuadSPIComponent", cg.Component)
-OctalSPIComponent = spi_ns.class_("OctalSPIComponent", cg.Component)
+QuadSPIComponent = spi_ns.class_("QuadSPIComponent", SPIComponent)
+OctalSPIComponent = spi_ns.class_("OctalSPIComponent", SPIComponent)
 SPIDevice = spi_ns.class_("SPIDevice")
 SPIDataRate = spi_ns.enum("SPIDataRate")
 SPIMode = spi_ns.enum("SPIMode")
@@ -420,6 +420,25 @@ async def to_code(configs):
             )
 
 
+def _use_any_spi_id(value):
+    """Validator that accepts any SPI component type (Single, Quad, or Octal)."""
+    if value == cv.SCHEMA_EXTRACT:
+        return SPIComponent
+
+    cv.check_not_templatable(value)
+    if value is None:
+        return core.ID(None, is_declaration=False, type=SPIComponent)
+    if (
+        isinstance(value, core.ID)
+        and value.is_declaration is False
+        and value.type in (SPIComponent, QuadSPIComponent, OctalSPIComponent)
+    ):
+        # Accept IDs of any SPI component type
+        return value
+
+    return core.ID(cv.validate_id_name(value), is_declaration=False, type=SPIComponent)
+
+
 def spi_device_schema(
     cs_pin_required=True,
     default_data_rate=cv.UNDEFINED,
@@ -436,7 +455,7 @@ def spi_device_schema(
     cs_pin_option = cv.Required if cs_pin_required else cv.Optional
     return cv.Schema(
         {
-            cv.GenerateID(CONF_SPI_ID): cv.use_id(TYPE_CLASS[mode]),
+            cv.GenerateID(CONF_SPI_ID): _use_any_spi_id,
             cv.Optional(
                 CONF_DATA_RATE, default=default_data_rate
             ): SPI_DATA_RATE_SCHEMA,
@@ -468,24 +487,67 @@ async def register_spi_device(
 
 
 def final_validate_device_schema(name: str, *, require_mosi: bool, require_miso: bool):
-    hub_schema = {}
-    if require_miso:
-        hub_schema[
-            cv.Required(
-                CONF_MISO_PIN,
-                msg=f"Component {name} requires this spi bus to declare a miso_pin",
-            )
-        ] = cv.valid
-    if require_mosi:
-        hub_schema[
-            cv.Required(
-                CONF_MOSI_PIN,
-                msg=f"Component {name} requires this spi bus to declare a mosi_pin",
-            )
-        ] = cv.valid
+    """Validate that an SPI device has required pins on its bus.
+
+    For single SPI buses, checks for mosi_pin and/or miso_pin.
+    For quad/octal SPI buses, checks for data_pins instead.
+    """
+
+    def validate_spi_bus(value):
+        # Get the SPI bus configuration
+        spi_bus_config = None
+
+        # Try to find the SPI bus in the config
+        if isinstance(value, dict) and CONF_SPI_ID in value:
+            spi_id = value[CONF_SPI_ID]
+            if isinstance(spi_id, core.ID):
+                # Check if we can find this bus in the full config
+                full_cfg = fv.full_config.get()
+                if full_cfg and "spi" in full_cfg:
+                    for bus_cfg in full_cfg.get("spi", []):
+                        if (
+                            isinstance(bus_cfg, dict)
+                            and bus_cfg.get(CONF_ID) == spi_id.id
+                        ):
+                            spi_bus_config = bus_cfg
+                            break
+
+        # If we found the SPI bus config, check based on its type
+        if spi_bus_config:
+            bus_type = spi_bus_config.get("type", TYPE_SINGLE)
+
+            # For quad/octal SPI, check for data_pins instead of mosi_pin
+            if bus_type in (TYPE_QUAD, TYPE_OCTAL):
+                if CONF_DATA_PINS not in spi_bus_config:
+                    raise cv.Invalid(
+                        f"Component {name} requires this spi bus to declare data_pins for {bus_type} SPI"
+                    )
+            else:
+                # For single SPI, check for mosi_pin and/or miso_pin
+                hub_schema = {}
+                if require_miso:
+                    hub_schema[
+                        cv.Required(
+                            CONF_MISO_PIN,
+                            msg=f"Component {name} requires this spi bus to declare a miso_pin",
+                        )
+                    ] = cv.valid
+                if require_mosi:
+                    hub_schema[
+                        cv.Required(
+                            CONF_MOSI_PIN,
+                            msg=f"Component {name} requires this spi bus to declare a mosi_pin",
+                        )
+                    ] = cv.valid
+
+                # Run the original validation for single SPI
+                if hub_schema:
+                    fv.id_declaration_match_schema(hub_schema)(value)
+
+        return value
 
     return cv.Schema(
-        {cv.Required(CONF_SPI_ID): fv.id_declaration_match_schema(hub_schema)},
+        {cv.Required(CONF_SPI_ID): validate_spi_bus},
         extra=cv.ALLOW_EXTRA,
     )
 

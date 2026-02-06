@@ -1,0 +1,40 @@
+esphome:
+  name: user-quad-spi-e6-test
+  friendly_name: User Quad SPI Spectra E6 Test
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: "TestSSID"
+  password: "TestPassword"
+
+spi:
+  id: quad_spi_bus
+  clk_pin: GPIO7
+  type: quad
+  data_pins:
+    - GPIO9
+    - GPIO8
+    - GPIO39
+    - GPIO42
+
+display:
+  - platform: epaper_spi
+    spi_id: quad_spi_bus
+    model: Spectra-E6
+    dimensions:
+      width: 1600
+      height: 1200
+    dc_pin: GPIO10
+    cs_pin: GPIO41
+    show_test_card: true
