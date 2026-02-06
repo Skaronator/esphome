@@ -101,6 +101,29 @@ uint8_t EPaperT133A01::map_nibble_to_t133a01(uint8_t nibble) {
   }
 }
 
+void EPaperT133A01::dump_config() {
+  EPaperBase::dump_config();
+  LOG_PIN("  CS1 Pin: ", this->cs1_pin_);
+  LOG_PIN("  Enable Pin: ", this->enable_pin_);
+}
+
+void EPaperT133A01::setup_pins_() const {
+  // Setup base pins (dc, reset, busy)
+  EPaperBase::setup_pins_();
+
+  // Setup CS1 pin
+  if (this->cs1_pin_ != nullptr) {
+    this->cs1_pin_->setup();              // OUTPUT
+    this->cs1_pin_->digital_write(true);  // CS1 high (inactive)
+  }
+
+  // Setup enable pin
+  if (this->enable_pin_ != nullptr) {
+    this->enable_pin_->setup();              // OUTPUT
+    this->enable_pin_->digital_write(true);  // Enable high (active)
+  }
+}
+
 void EPaperT133A01::fill(Color color) {
   // If clipping is active, fall back to base implementation
   if (this->get_clipping().is_set()) {

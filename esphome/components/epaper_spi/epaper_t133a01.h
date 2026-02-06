@@ -15,10 +15,12 @@ class EPaperT133A01 : public EPaperBase {
   void set_cs1_pin(GPIOPin *cs1_pin) { this->cs1_pin_ = cs1_pin; }
   void set_enable_pin(GPIOPin *enable_pin) { this->enable_pin_ = enable_pin; }
 
+  void dump_config() override;
   void fill(Color color) override;
   void clear() override;
 
  protected:
+  void setup_pins_() const;
   void refresh_screen(bool partial) override;
   void power_on() override;
   void power_off() override;
