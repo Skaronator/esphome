@@ -24,6 +24,7 @@ class EPaperT133A01 : public EPaperBase {
   }
 
   void set_cs2_pin(GPIOPin *cs2_pin) { this->cs2_pin_ = cs2_pin; }
+  void set_enable_pin(GPIOPin *enable_pin) { this->enable_pin_ = enable_pin; }
 
   void setup() override;
   void fill(Color color) override;
@@ -47,6 +48,7 @@ class EPaperT133A01 : public EPaperBase {
   bool initialise(bool partial) override;
 
   GPIOPin *cs2_pin_{nullptr};
+  GPIOPin *enable_pin_{nullptr};
 };
 
 }  // namespace esphome::epaper_spi

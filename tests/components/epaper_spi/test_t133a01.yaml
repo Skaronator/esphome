@@ -11,7 +11,9 @@ epaper_spi:
     cs2_pin: GPIO4 # Second CS for configuration commands
     dc_pin: GPIO5
     reset_pin: GPIO6
-    busy_pin: GPIO7
+    busy_pin:
+      number: GPIO7
+      inverted: true
     rotation: 0
     update_interval: 60s
     lambda: |-

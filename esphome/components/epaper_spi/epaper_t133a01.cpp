@@ -79,6 +79,10 @@ static uint8_t color_to_t133a01(Color color) {
 }
 
 void EPaperT133A01::setup() {
+  if (this->enable_pin_ != nullptr) {
+    this->enable_pin_->setup();
+    this->enable_pin_->digital_write(true);  // Enable display power
+  }
   if (this->cs2_pin_ != nullptr) {
     this->cs2_pin_->setup();
     this->cs2_pin_->digital_write(true);  // CS2 inactive (high)

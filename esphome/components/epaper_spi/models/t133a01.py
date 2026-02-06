@@ -59,4 +59,5 @@ t133a01 = T133A01Model(
     minimum_update_interval="30s",
     data_rate="10MHz",
     cs2_pin=None,  # Required - second chip select for config commands
+    enable_pin=None,  # Optional - power enable pin
 )

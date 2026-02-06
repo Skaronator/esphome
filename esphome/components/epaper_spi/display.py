@@ -205,6 +205,12 @@ async def to_code(config):
     if cs2_pin := config.get(CONF_CS2_PIN):
         cs2 = await cg.gpio_pin_expression(cs2_pin)
         cg.add(var.set_cs2_pin(cs2))
+    if enable_pin := config.get(CONF_ENABLE_PIN):
+        if isinstance(enable_pin, list):
+            enable_pin = enable_pin[0] if enable_pin else None
+        if enable_pin:
+            en = await cg.gpio_pin_expression(enable_pin)
+            cg.add(var.set_enable_pin(en))
     cg.add(var.set_full_update_every(config[CONF_FULL_UPDATE_EVERY]))
     if CONF_RESET_DURATION in config:
         cg.add(var.set_reset_duration(config[CONF_RESET_DURATION]))
