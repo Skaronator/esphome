@@ -49,6 +49,7 @@ class EPaperT133A01 : public EPaperBase {
 
   GPIOPin *cs2_pin_{nullptr};
   GPIOPin *enable_pin_{nullptr};
+  uint8_t data_phase_{0};
 };
 
 }  // namespace esphome::epaper_spi

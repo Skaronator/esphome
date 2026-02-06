@@ -232,7 +232,8 @@ bool HOT EPaperT133A01::transfer_data() {
 
   if (this->current_data_index_ == 0) {
     // Start data transfer command - use regular CS pin (not cs2_pin)
-    this->command(0x10);  // DTM - Data Transfer Mode
+    // Phase 0 -> old data (0x10), Phase 1 -> new data (0x13)
+    this->command(this->data_phase_ == 0 ? 0x10 : 0x13);
   }
 
   size_t buf_idx = 0;
@@ -263,6 +264,12 @@ bool HOT EPaperT133A01::transfer_data() {
   }
 
   this->current_data_index_ = 0;
+  if (this->data_phase_ == 0) {
+    // Send the buffer a second time as new data
+    this->data_phase_ = 1;
+    return false;
+  }
+  this->data_phase_ = 0;
   return true;  // Transfer complete
 }
 
