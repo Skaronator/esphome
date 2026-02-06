@@ -1,4 +1,4 @@
-#include "epaper_spi_t133a01.h"
+#include "epaper_t133a01.h"
 
 #include <algorithm>
 

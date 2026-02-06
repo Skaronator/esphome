@@ -38,3 +38,11 @@ t133a01_base = T133A01Model(
     height=1600,
     data_rate="10MHz",
 )
+
+# Extended model for XIAO ePaper Display Board EE02
+t133a01_base.extend(
+    "xiao-epaper-13.3in-ee02",
+    width=1200,
+    height=1600,
+    data_rate="10MHz",
+)
