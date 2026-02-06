@@ -83,22 +83,24 @@ def spi_multi_device_schema(cs_pin_required=True, default_data_rate=cv.UNDEFINED
     """
     cs_pin_option = cv.Required if cs_pin_required else cv.Optional
 
-    # Custom validator that accepts any SPI component type by trying each type.
-    # Since QuadSPIComponent and OctalSPIComponent are C++ type aliases for SPIComponent,
-    # we need to accept IDs of any of these types. We do this by trying cv.use_id()
-    # for each type in sequence.
+    # Custom validator that accepts any SPI component type.
+    # We create ID objects manually to avoid type checking in cv.use_id().
     def validate_spi_id(value):
-        # Try each SPI type in order
-        for spi_type in [spi.SPIComponent, spi.QuadSPIComponent, spi.OctalSPIComponent]:
-            validator = cv.use_id(spi_type)
-            try:
-                return validator(value)
-            except cv.Invalid:
-                continue
-        # If none matched, raise an error
-        raise cv.Invalid(
-            f"ID '{value}' is not a valid SPI component (must be type: single, quad, or octal)"
-        )
+        from esphome import core
+        
+        # Handle None case
+        if value is None:
+            # Return an ID that can be any SPI type - use SPIComponent as fallback
+            return core.ID(None, is_declaration=False, type=spi.SPIComponent)
+        
+        # If it's already an ID object, use it as-is (it will be the right type)
+        if isinstance(value, core.ID):
+            return value
+        
+        # If it's a string ID reference, create an ID object without type enforcement
+        # We use the SPIComponent type but the actual resolution will work with any SPI type
+        # because at the C++ level they're all the same
+        return core.ID(cv.validate_id_name(value), is_declaration=False, type=spi.SPIComponent)
 
     return cv.Schema(
         {
