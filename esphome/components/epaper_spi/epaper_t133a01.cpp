@@ -202,7 +202,7 @@ bool EPaperT133A01::transfer_data() {
   // Transfer pixel data to display using two-pass method
   // Pass 1: First half of each row (bytes 0 to width/4)
   // Pass 2: Second half of each row (bytes width/4 to width/2)
-  // Each byte contains two 4-bit pixels which are individually color-mapped
+  // Each byte contains two 4-bit pixels with palette indices
 
   // Send 0x10 command (Write Data)
   this->command(0x10);
@@ -213,7 +213,7 @@ bool EPaperT133A01::transfer_data() {
 
   ESP_LOGV(TAG, "Pass 1: Send first half of each row");
 
-  // Pass 1: Send first half of each row with color mapping
+  // Pass 1: Send first half of each row
   for (uint16_t y = 0; y < this->height_; y++) {
     if (y % 10 == 0) {
       App.feed_wdt();
@@ -221,20 +221,15 @@ bool EPaperT133A01::transfer_data() {
     for (uint16_t col = 0; col < bytes_per_block_row; col++) {
       size_t pos = y * bytes_per_row + col;
       uint8_t pixel_byte = this->buffer_[pos];
-
-      // Buffer already contains palette indices (0x00-0x05) from color_to_palette_index()
-      // Send them directly combined: (upper << 4) | lower
-      uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
-      uint8_t lower_nibble = pixel_byte & 0x0F;
-
-      // Combine and send as single byte (no further mapping needed)
-      this->write_byte((upper_nibble << 4) | lower_nibble);
+      // Buffer already contains palette indices - send directly
+      this->write_byte(pixel_byte);
+      bytes_written++;
     }
   }
 
   ESP_LOGV(TAG, "Pass 2: Send second half of each row");
 
-  // Pass 2: Send second half of each row with color mapping
+  // Pass 2: Send second half of each row
   for (uint16_t y = 0; y < this->height_; y++) {
     if (y % 10 == 0) {
       App.feed_wdt();
@@ -242,14 +237,9 @@ bool EPaperT133A01::transfer_data() {
     for (uint16_t col = 0; col < bytes_per_block_row; col++) {
       size_t pos = y * bytes_per_row + bytes_per_block_row + col;
       uint8_t pixel_byte = this->buffer_[pos];
-
-      // Buffer already contains palette indices (0x00-0x05) from color_to_palette_index()
-      // Send them directly combined: (upper << 4) | lower
-      uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
-      uint8_t lower_nibble = pixel_byte & 0x0F;
-
-      // Combine and send as single byte (no further mapping needed)
-      this->write_byte((upper_nibble << 4) | lower_nibble);
+      // Buffer already contains palette indices - send directly
+      this->write_byte(pixel_byte);
+      bytes_written++;
     }
   }
 
