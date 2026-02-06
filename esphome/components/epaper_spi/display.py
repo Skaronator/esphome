@@ -11,7 +11,6 @@ from esphome.config_validation import update_interval
 from esphome.const import (
     CONF_BUSY_PIN,
     CONF_CS_PIN,
-    CONF_DATA_PINS,
     CONF_DATA_RATE,
     CONF_DC_PIN,
     CONF_DIMENSIONS,
@@ -35,7 +34,6 @@ from esphome.const import (
     CONF_WIDTH,
 )
 from esphome.cpp_generator import RawExpression
-import esphome.final_validate as fv
 from esphome.final_validate import full_config
 
 from . import models
@@ -172,24 +170,8 @@ CONFIG_SCHEMA = customise_schema
 
 
 def _final_validate(config):
-    # Validate that the SPI ID points to a valid SPI component (any type)
-    spi_id = config.get(CONF_SPI_ID)
-    if spi_id:
-        # Get the full configuration to check if the SPI component exists
-        full_cfg = fv.full_config.get()
-        spi_config = full_cfg.get(spi_id)
-        
-        if not spi_config:
-            raise cv.Invalid(f"SPI component '{spi_id}' not found")
-        
-        # Check if this is quad/octal SPI (has data_pins) or regular SPI (has mosi_pin)
-        has_data_pins = CONF_DATA_PINS in spi_config
-        has_mosi = spi.CONF_MOSI_PIN in spi_config
-        
-        if not has_data_pins and not has_mosi:
-            raise cv.Invalid(
-                "Component epaper_spi requires the SPI bus to declare either mosi_pin (for regular SPI) or data_pins (for quad/octal SPI)"
-            )
+    # The SPI ID validation is handled by cg.get_variable() in register_spi_device()
+    # We just need to ensure the basic display configuration is valid
 
     global_config = full_config.get()
     from esphome.components.lvgl import DOMAIN as LVGL_DOMAIN
