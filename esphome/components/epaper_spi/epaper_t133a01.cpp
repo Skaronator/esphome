@@ -211,6 +211,11 @@ bool EPaperT133A01::transfer_data() {
   uint16_t bytes_per_block_row = this->width_ / 4;  // 400 bytes per pass
   uint32_t bytes_written = 0;
 
+  // Debug: check first few bytes in buffer
+  ESP_LOGV(TAG, "Buffer sample (first 10 bytes): %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X", this->buffer_[0],
+           this->buffer_[1], this->buffer_[2], this->buffer_[3], this->buffer_[4], this->buffer_[5], this->buffer_[6],
+           this->buffer_[7], this->buffer_[8], this->buffer_[9]);
+
   ESP_LOGV(TAG, "Pass 1: Send first half of each row");
 
   // Pass 1: Send first half of each row
@@ -221,8 +226,15 @@ bool EPaperT133A01::transfer_data() {
     for (uint16_t col = 0; col < bytes_per_block_row; col++) {
       size_t pos = y * bytes_per_row + col;
       uint8_t pixel_byte = this->buffer_[pos];
-      // Buffer already contains palette indices - send directly
-      this->write_byte(pixel_byte);
+
+      // Extract nibbles and apply color mapping
+      uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
+      uint8_t lower_nibble = pixel_byte & 0x0F;
+
+      uint8_t mapped_upper = map_nibble_to_t133a01(upper_nibble);
+      uint8_t mapped_lower = map_nibble_to_t133a01(lower_nibble);
+
+      this->write_byte((mapped_upper << 4) | mapped_lower);
       bytes_written++;
     }
   }
@@ -237,8 +249,15 @@ bool EPaperT133A01::transfer_data() {
     for (uint16_t col = 0; col < bytes_per_block_row; col++) {
       size_t pos = y * bytes_per_row + bytes_per_block_row + col;
       uint8_t pixel_byte = this->buffer_[pos];
-      // Buffer already contains palette indices - send directly
-      this->write_byte(pixel_byte);
+
+      // Extract nibbles and apply color mapping
+      uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
+      uint8_t lower_nibble = pixel_byte & 0x0F;
+
+      uint8_t mapped_upper = map_nibble_to_t133a01(upper_nibble);
+      uint8_t mapped_lower = map_nibble_to_t133a01(lower_nibble);
+
+      this->write_byte((mapped_upper << 4) | mapped_lower);
       bytes_written++;
     }
   }
