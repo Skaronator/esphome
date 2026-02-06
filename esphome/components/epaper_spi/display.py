@@ -74,32 +74,27 @@ TRANSFORM_OPTIONS = {CONF_MIRROR_X, CONF_MIRROR_Y, CONF_SWAP_XY}
 
 def spi_multi_device_schema(cs_pin_required=True, default_data_rate=cv.UNDEFINED, default_mode=cv.UNDEFINED):
     """Create a schema for an SPI device that accepts any SPI type (single, quad, or octal).
-    
+
     This is needed because epaper_spi devices should work with any SPI bus type,
     since QuadSPIComponent and OctalSPIComponent are type aliases for SPIComponent at the C++ level.
-    
+
     :param cs_pin_required: If true, make the CS_PIN required in the config.
     :param default_data_rate: Optional data_rate to use as default
     :param default_mode: Optional. The default SPI mode to use.
     :return: The SPI device schema, `extend` this in your config schema.
     """
     cs_pin_option = cv.Required if cs_pin_required else cv.Optional
-    
-    # Custom validator that accepts any SPI component type (SPIComponent, QuadSPIComponent, OctalSPIComponent)
-    # We need this because cv.use_id() does strict type checking, but at the C++ level,
-    # QuadSPIComponent and OctalSPIComponent are type aliases for SPIComponent
+
+    # Custom validator that accepts any SPI component type.
+    # We can't use cv.use_id(SPIComponent) because it rejects QuadSPIComponent
+    # and OctalSPIComponent, even though they're C++ type aliases for SPIComponent.
+    # Instead, we accept a string and validate it's a valid SPI ID in final_validate.
     def validate_spi_id(value):
-        # Try to validate against each known SPI component type
-        for spi_type in [spi.SPIComponent, spi.QuadSPIComponent, spi.OctalSPIComponent]:
-            try:
-                return cv.use_id(spi_type)(value)
-            except cv.Invalid:
-                continue
-        # If none matched, raise an error
-        raise cv.Invalid(
-            f"ID '{value}' is not a valid SPI component (must be type: single, quad, or octal)"
-        )
-    
+        # Just validate it's a proper identifier string
+        if not isinstance(value, str):
+            raise cv.Invalid("SPI ID must be a string")
+        return value
+
     return cv.Schema(
         {
             cv.GenerateID(CONF_SPI_ID): validate_spi_id,
@@ -177,23 +172,24 @@ CONFIG_SCHEMA = customise_schema
 
 
 def _final_validate(config):
-    # For quad/octal SPI, data_pins replaces mosi_pin/miso_pin
-    # We need custom validation that accepts either mosi_pin or data_pins
-    spi_id_config = config.get(CONF_SPI_ID)
-    if spi_id_config:
-        spi_config = fv.full_config.get().get(spi_id_config)
-        if spi_config:
-            # Check if this is quad/octal SPI (has data_pins) or regular SPI (has mosi_pin)
-            has_data_pins = CONF_DATA_PINS in spi_config
-            has_mosi = spi.CONF_MOSI_PIN in spi_config
-            
-            if not has_data_pins and not has_mosi:
-                raise cv.Invalid(
-                    "Component epaper_spi requires the SPI bus to declare either mosi_pin (for regular SPI) or data_pins (for quad/octal SPI)"
-                )
-    
-    # Don't use the standard final_validate_device_schema since it only checks for mosi_pin
-    # and doesn't understand quad/octal SPI with data_pins
+    # Validate that the SPI ID points to a valid SPI component (any type)
+    spi_id = config.get(CONF_SPI_ID)
+    if spi_id:
+        # Get the full configuration to check if the SPI component exists
+        full_cfg = fv.full_config.get()
+        spi_config = full_cfg.get(spi_id)
+        
+        if not spi_config:
+            raise cv.Invalid(f"SPI component '{spi_id}' not found")
+        
+        # Check if this is quad/octal SPI (has data_pins) or regular SPI (has mosi_pin)
+        has_data_pins = CONF_DATA_PINS in spi_config
+        has_mosi = spi.CONF_MOSI_PIN in spi_config
+        
+        if not has_data_pins and not has_mosi:
+            raise cv.Invalid(
+                "Component epaper_spi requires the SPI bus to declare either mosi_pin (for regular SPI) or data_pins (for quad/octal SPI)"
+            )
 
     global_config = full_config.get()
     from esphome.components.lvgl import DOMAIN as LVGL_DOMAIN
