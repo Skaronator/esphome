@@ -222,15 +222,13 @@ bool EPaperT133A01::transfer_data() {
       size_t pos = y * bytes_per_row + col;
       uint8_t pixel_byte = this->buffer_[pos];
 
-      // Extract and map both nibbles
+      // Buffer already contains palette indices (0x00-0x05) from color_to_palette_index()
+      // Send them directly combined: (upper << 4) | lower
       uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
       uint8_t lower_nibble = pixel_byte & 0x0F;
-      uint8_t mapped_upper = map_nibble_to_t133a01(upper_nibble);
-      uint8_t mapped_lower = map_nibble_to_t133a01(lower_nibble);
 
-      // Combine mapped values and send as single byte
-      this->write_byte((mapped_upper << 4) | mapped_lower);
-      bytes_written++;
+      // Combine and send as single byte (no further mapping needed)
+      this->write_byte((upper_nibble << 4) | lower_nibble);
     }
   }
 
@@ -245,15 +243,13 @@ bool EPaperT133A01::transfer_data() {
       size_t pos = y * bytes_per_row + bytes_per_block_row + col;
       uint8_t pixel_byte = this->buffer_[pos];
 
-      // Extract and map both nibbles
+      // Buffer already contains palette indices (0x00-0x05) from color_to_palette_index()
+      // Send them directly combined: (upper << 4) | lower
       uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
       uint8_t lower_nibble = pixel_byte & 0x0F;
-      uint8_t mapped_upper = map_nibble_to_t133a01(upper_nibble);
-      uint8_t mapped_lower = map_nibble_to_t133a01(lower_nibble);
 
-      // Combine mapped values and send as single byte
-      this->write_byte((mapped_upper << 4) | mapped_lower);
-      bytes_written++;
+      // Combine and send as single byte (no further mapping needed)
+      this->write_byte((upper_nibble << 4) | lower_nibble);
     }
   }
 
