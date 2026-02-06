@@ -37,6 +37,8 @@ from esphome.final_validate import full_config
 
 from . import models
 
+CONF_CS2_PIN = "cs2_pin"
+
 AUTO_LOAD = ["split_buffer"]
 DEPENDENCIES = ["spi"]
 
@@ -98,6 +100,7 @@ def model_schema(config):
             cv.Optional(CONF_FULL_UPDATE_EVERY, default=1): cv.int_range(1, 255),
             model.option(CONF_BUSY_PIN): pins.gpio_input_pin_schema,
             model.option(CONF_CS_PIN): pins.gpio_output_pin_schema,
+            model.option(CONF_CS2_PIN): pins.gpio_output_pin_schema,
             model.option(CONF_DC_PIN, fallback=None): pins.gpio_output_pin_schema,
             model.option(CONF_RESET_PIN): pins.gpio_output_pin_schema,
             cv.GenerateID(): cv.declare_id(class_name),
@@ -118,7 +121,7 @@ def model_schema(config):
 def customise_schema(config):
     """
     Create a customised config schema for a specific model and validate the configuration.
-    :param config: The configuration dictionary to validate
+
     :return: The validated configuration dictionary
     :raises cv.Invalid: If the configuration is invalid
     """
@@ -163,6 +166,7 @@ async def to_code(config):
     init_sequence = config.get(CONF_INIT_SEQUENCE)
     if init_sequence is None:
         init_sequence = model.get_init_sequence(config)
+
     init_sequence = flatten_sequence(init_sequence)
     init_sequence_length = len(init_sequence)
     init_sequence_id = cg.static_const_array(
@@ -198,6 +202,9 @@ async def to_code(config):
     if busy_pin := config.get(CONF_BUSY_PIN):
         busy = await cg.gpio_pin_expression(busy_pin)
         cg.add(var.set_busy_pin(busy))
+    if cs2_pin := config.get(CONF_CS2_PIN):
+        cs2 = await cg.gpio_pin_expression(cs2_pin)
+        cg.add(var.set_cs2_pin(cs2))
     cg.add(var.set_full_update_every(config[CONF_FULL_UPDATE_EVERY]))
     if CONF_RESET_DURATION in config:
         cg.add(var.set_reset_duration(config[CONF_RESET_DURATION]))

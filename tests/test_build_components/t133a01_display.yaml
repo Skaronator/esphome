@@ -1,0 +1,40 @@
+esphome:
+  name: test-t133a01
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: "test"
+  password: "test123456"
+
+logger:
+
+api:
+
+ota:
+  - platform: esphome
+
+spi:
+  - id: spi_bus
+    clk_pin: GPIO1
+    mosi_pin: GPIO2
+
+display:
+  - platform: epaper_spi
+    model: T133A01
+    id: my_display
+    cs_pin: GPIO3
+    cs2_pin: GPIO4
+    dc_pin: GPIO5
+    reset_pin: GPIO6
+    busy_pin: GPIO7
+    rotation: 0
+    update_interval: 60s
+
+font:
+  - file: "gfonts://Roboto"
+    id: my_font
+    size: 20

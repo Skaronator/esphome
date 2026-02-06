@@ -1,0 +1,23 @@
+spi:
+  - id: spi_bus
+    clk_pin: GPIO1
+    mosi_pin: GPIO2
+
+epaper_spi:
+  - platform: epaper_spi
+    model: T133A01
+    id: my_display
+    cs_pin: GPIO3
+    cs2_pin: GPIO4 # Second CS for configuration commands
+    dc_pin: GPIO5
+    reset_pin: GPIO6
+    busy_pin: GPIO7
+    rotation: 0
+    update_interval: 60s
+    lambda: |-
+      it.print(0, 0, id(my_font), "Hello T133A01!");
+
+font:
+  - file: "fonts/OpenSans-Regular.ttf"
+    id: my_font
+    size: 20
