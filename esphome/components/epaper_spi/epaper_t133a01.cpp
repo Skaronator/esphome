@@ -209,10 +209,13 @@ bool EPaperT133A01::transfer_data() {
 
   uint16_t bytes_per_row = this->width_ / 2;        // 800 bytes per row
   uint16_t bytes_per_block_row = this->width_ / 4;  // 400 bytes per pass
+  uint32_t bytes_written = 0;
+
+  ESP_LOGV(TAG, "Pass 1: Send first half of each row");
 
   // Pass 1: Send first half of each row with color mapping
   for (uint16_t y = 0; y < this->height_; y++) {
-    if (y % 100 == 0) {
+    if (y % 10 == 0) {
       App.feed_wdt();
     }
     for (uint16_t col = 0; col < bytes_per_block_row; col++) {
@@ -227,12 +230,15 @@ bool EPaperT133A01::transfer_data() {
 
       // Combine mapped values and send as single byte
       this->write_byte((mapped_upper << 4) | mapped_lower);
+      bytes_written++;
     }
   }
 
+  ESP_LOGV(TAG, "Pass 2: Send second half of each row");
+
   // Pass 2: Send second half of each row with color mapping
   for (uint16_t y = 0; y < this->height_; y++) {
-    if (y % 100 == 0) {
+    if (y % 10 == 0) {
       App.feed_wdt();
     }
     for (uint16_t col = 0; col < bytes_per_block_row; col++) {
@@ -247,9 +253,11 @@ bool EPaperT133A01::transfer_data() {
 
       // Combine mapped values and send as single byte
       this->write_byte((mapped_upper << 4) | mapped_lower);
+      bytes_written++;
     }
   }
 
+  ESP_LOGV(TAG, "Transfer complete: %u bytes sent", bytes_written);
   return true;
 }
 
