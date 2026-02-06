@@ -83,15 +83,22 @@ def spi_multi_device_schema(cs_pin_required=True, default_data_rate=cv.UNDEFINED
     """
     cs_pin_option = cv.Required if cs_pin_required else cv.Optional
 
-    # Custom validator that accepts any SPI component type.
-    # We can't use cv.use_id(SPIComponent) because it rejects QuadSPIComponent
-    # and OctalSPIComponent, even though they're C++ type aliases for SPIComponent.
-    # Instead, we accept a string and validate it's a valid SPI ID in final_validate.
+    # Custom validator that accepts any SPI component type by trying each type.
+    # Since QuadSPIComponent and OctalSPIComponent are C++ type aliases for SPIComponent,
+    # we need to accept IDs of any of these types. We do this by trying cv.use_id()
+    # for each type in sequence.
     def validate_spi_id(value):
-        # Just validate it's a proper identifier string
-        if not isinstance(value, str):
-            raise cv.Invalid("SPI ID must be a string")
-        return value
+        # Try each SPI type in order
+        for spi_type in [spi.SPIComponent, spi.QuadSPIComponent, spi.OctalSPIComponent]:
+            validator = cv.use_id(spi_type)
+            try:
+                return validator(value)
+            except cv.Invalid:
+                continue
+        # If none matched, raise an error
+        raise cv.Invalid(
+            f"ID '{value}' is not a valid SPI component (must be type: single, quad, or octal)"
+        )
 
     return cv.Schema(
         {
