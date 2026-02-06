@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "esphome/core/log.h"
+#include "esphome/core/application.h"
 
 namespace esphome::epaper_spi {
 static constexpr const char *const TAG = "epaper_spi.t133a01";
@@ -187,7 +188,11 @@ bool EPaperT133A01::transfer_data() {
   this->command(0x10);
 
   // Send pixel data
+  // Feed watchdog every ~100 rows to prevent timeout during large transfers
   for (uint16_t y = start_y; y < end_y; y++) {
+    if (y % 100 == 0) {
+      App.feed_wdt();
+    }
     for (uint16_t x = start_x; x < end_x; x += 2) {
       size_t pos = (x + y * this->width_) / 2;
       if (pos < this->buffer_.size()) {
