@@ -11,6 +11,7 @@ from esphome.config_validation import update_interval
 from esphome.const import (
     CONF_BUSY_PIN,
     CONF_CS_PIN,
+    CONF_DATA_PINS,
     CONF_DATA_RATE,
     CONF_DC_PIN,
     CONF_DIMENSIONS,
@@ -27,12 +28,14 @@ from esphome.const import (
     CONF_RESET_DURATION,
     CONF_RESET_PIN,
     CONF_ROTATION,
+    CONF_SPI_ID,
     CONF_SWAP_XY,
     CONF_TRANSFORM,
     CONF_UPDATE_INTERVAL,
     CONF_WIDTH,
 )
 from esphome.cpp_generator import RawExpression
+import esphome.final_validate as fv
 from esphome.final_validate import full_config
 
 from . import models
@@ -69,6 +72,37 @@ DIMENSION_SCHEMA = cv.Schema(
 TRANSFORM_OPTIONS = {CONF_MIRROR_X, CONF_MIRROR_Y, CONF_SWAP_XY}
 
 
+def spi_multi_device_schema(cs_pin_required=True, default_data_rate=cv.UNDEFINED, default_mode=cv.UNDEFINED):
+    """Create a schema for an SPI device that accepts any SPI type (single, quad, or octal).
+    
+    This is needed because epaper_spi devices should work with any SPI bus type,
+    since QuadSPIComponent and OctalSPIComponent are type aliases for SPIComponent at the C++ level.
+    
+    :param cs_pin_required: If true, make the CS_PIN required in the config.
+    :param default_data_rate: Optional data_rate to use as default
+    :param default_mode: Optional. The default SPI mode to use.
+    :return: The SPI device schema, `extend` this in your config schema.
+    """
+    cs_pin_option = cv.Required if cs_pin_required else cv.Optional
+    
+    # Accept any SPI component type (SPIComponent, QuadSPIComponent, OctalSPIComponent)
+    # Since QuadSPIComponent and OctalSPIComponent are C++ type aliases for SPIComponent,
+    # we can use cv.Any to accept IDs of any of these types
+    return cv.Schema(
+        {
+            cv.GenerateID(CONF_SPI_ID): cv.Any(
+                cv.use_id(spi.SPIComponent),
+                cv.use_id(spi.QuadSPIComponent),
+                cv.use_id(spi.OctalSPIComponent),
+            ),
+            cv.Optional(CONF_DATA_RATE, default=default_data_rate): spi.SPI_DATA_RATE_SCHEMA,
+            cv.Optional(spi.CONF_SPI_MODE, default=default_mode): cv.enum(spi.SPI_MODE_OPTIONS, upper=True),
+            cv.Optional(spi.CONF_RELEASE_DEVICE): cv.All(cv.boolean, cv.only_on_esp32),
+            cs_pin_option(CONF_CS_PIN): pins.gpio_output_pin_schema,
+        }
+    )
+
+
 def model_schema(config):
     model = MODELS[config[CONF_MODEL]]
     class_name = epaper_spi_ns.class_(model.class_name, EPaperBase)
@@ -77,7 +111,7 @@ def model_schema(config):
     )
     cv_dimensions = cv.Optional if model.get_default(CONF_WIDTH) else cv.Required
     return display.FULL_DISPLAY_SCHEMA.extend(
-        spi.spi_device_schema(
+        spi_multi_device_schema(
             cs_pin_required=False,
             default_mode="MODE0",
             default_data_rate=model.get_default(CONF_DATA_RATE, 10_000_000),
@@ -135,9 +169,23 @@ CONFIG_SCHEMA = customise_schema
 
 
 def _final_validate(config):
-    spi.final_validate_device_schema(
-        "epaper_spi", require_miso=False, require_mosi=True
-    )(config)
+    # For quad/octal SPI, data_pins replaces mosi_pin/miso_pin
+    # We need custom validation that accepts either mosi_pin or data_pins
+    spi_id_config = config.get(CONF_SPI_ID)
+    if spi_id_config:
+        spi_config = fv.full_config.get().get(spi_id_config)
+        if spi_config:
+            # Check if this is quad/octal SPI (has data_pins) or regular SPI (has mosi_pin)
+            has_data_pins = CONF_DATA_PINS in spi_config
+            has_mosi = spi.CONF_MOSI_PIN in spi_config
+            
+            if not has_data_pins and not has_mosi:
+                raise cv.Invalid(
+                    "Component epaper_spi requires the SPI bus to declare either mosi_pin (for regular SPI) or data_pins (for quad/octal SPI)"
+                )
+    
+    # Don't use the standard final_validate_device_schema since it only checks for mosi_pin
+    # and doesn't understand quad/octal SPI with data_pins
 
     global_config = full_config.get()
     from esphome.components.lvgl import DOMAIN as LVGL_DOMAIN
