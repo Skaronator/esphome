@@ -200,13 +200,13 @@ void EPaperT133A01::wait_busy_() {
 
 bool EPaperT133A01::transfer_data() {
   // Transfer pixel data to display in two passes
-  // Pass 1: Upper nibble (mapped), Pass 2: Lower nibble (mapped)
+  // Pass 1: Upper nibble, Pass 2: Lower nibble
   // Must send full display dimensions, not just dirty region
 
   // Send 0x10 command (Write Data)
   this->command(0x10);
 
-  // Pass 1: Send upper nibbles with color mapping
+  // Pass 1: Send upper nibbles (first pixel in each byte pair)
   // Feed watchdog every ~100 rows to prevent timeout during large transfers
   for (uint16_t y = 0; y < this->height_; y++) {
     if (y % 100 == 0) {
@@ -216,12 +216,11 @@ bool EPaperT133A01::transfer_data() {
       size_t pos = (x + y * this->width_) / 2;
       uint8_t pixel_byte = this->buffer_[pos];
       uint8_t upper_nibble = (pixel_byte >> 4) & 0x0F;
-      uint8_t mapped_color = map_nibble_to_t133a01(upper_nibble);
-      this->write_byte(mapped_color);
+      this->write_byte(upper_nibble);
     }
   }
 
-  // Pass 2: Send lower nibbles with color mapping
+  // Pass 2: Send lower nibbles (second pixel in each byte pair)
   for (uint16_t y = 0; y < this->height_; y++) {
     if (y % 100 == 0) {
       App.feed_wdt();
@@ -230,8 +229,7 @@ bool EPaperT133A01::transfer_data() {
       size_t pos = (x + y * this->width_) / 2;
       uint8_t pixel_byte = this->buffer_[pos];
       uint8_t lower_nibble = pixel_byte & 0x0F;
-      uint8_t mapped_color = map_nibble_to_t133a01(lower_nibble);
-      this->write_byte(mapped_color);
+      this->write_byte(lower_nibble);
     }
   }
 
