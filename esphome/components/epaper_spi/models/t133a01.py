@@ -37,6 +37,7 @@ t133a01.extend(
         "inverted": True,
         "mode": {
             "input": True,
+            "pullup": True,
         },
     },
     reset_pin=38,

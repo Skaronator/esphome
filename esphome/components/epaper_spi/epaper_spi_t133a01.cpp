@@ -254,7 +254,14 @@ void EPaperT133A01::power_on() {
   if (this->busy_pin_ != nullptr) {
     ESP_LOGV(TAG, "BUSY before PON: %d", (int) this->busy_pin_->digital_read());
   }
-  this->cs1_command_(R04_PON);
+
+  // Mirror manufacturer EPD_UPDATE(): keep CS1 asserted while issuing PON and waiting for BUSY.
+  this->dc_pin_->digital_write(false);
+  this->cs1_device_.enable();
+  this->cs1_device_.write_byte(R04_PON);
+  this->wait_for_idle_sync_();
+  this->cs1_device_.disable();
+
   this->next_delay_ = 30;
 }
 
@@ -264,7 +271,16 @@ void EPaperT133A01::refresh_screen(bool partial) {
   if (this->busy_pin_ != nullptr) {
     ESP_LOGV(TAG, "BUSY before DRF: %d", (int) this->busy_pin_->digital_read());
   }
-  this->cs1_cmd_data_(R12_DRF, DRF_V, sizeof(DRF_V));
+
+  // Mirror manufacturer EPD_UPDATE(): keep CS1 asserted while issuing DRF and waiting for BUSY.
+  this->dc_pin_->digital_write(false);
+  this->cs1_device_.enable();
+  this->cs1_device_.write_byte(R12_DRF);
+  this->dc_pin_->digital_write(true);
+  this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
+  this->wait_for_idle_sync_();
+  this->cs1_device_.disable();
+
   this->next_delay_ = 30;
 }
 
@@ -273,7 +289,16 @@ void EPaperT133A01::power_off() {
   if (this->busy_pin_ != nullptr) {
     ESP_LOGV(TAG, "BUSY before POF: %d", (int) this->busy_pin_->digital_read());
   }
-  this->cs1_cmd_data_(R02_POF, POF_V, sizeof(POF_V));
+
+  // Mirror manufacturer EPD_UPDATE(): keep CS1 asserted while issuing POF and waiting for BUSY.
+  this->dc_pin_->digital_write(false);
+  this->cs1_device_.enable();
+  this->cs1_device_.write_byte(R02_POF);
+  this->dc_pin_->digital_write(true);
+  this->cs1_device_.write_array(POF_V, sizeof(POF_V));
+  this->wait_for_idle_sync_();
+  this->cs1_device_.disable();
+
   this->next_delay_ = 30;
 }
 
