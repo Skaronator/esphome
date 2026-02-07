@@ -36,6 +36,9 @@ class EPaperT133A01 : public EPaperBase {
   void cs1_command_(uint8_t value);
   void cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t length);
 
+  void cs1_hold_(const char *reason);
+  void cs1_release_hold_();
+
   void wait_for_idle_sync_() const;
 
   GPIOPin *cs1_pin_{};
@@ -48,6 +51,11 @@ class EPaperT133A01 : public EPaperBase {
   bool transfer_dtm_sent_{false};
   bool transfer_prologue_done_{false};
   bool transfer_streaming_{false};
+
+  // Keep CS1 asserted across non-blocking BUSY waits.
+  bool cs1_held_{false};
+  uint32_t cs1_hold_start_{0};
+  const char *cs1_hold_reason_{nullptr};
 };
 
 }  // namespace esphome::epaper_spi

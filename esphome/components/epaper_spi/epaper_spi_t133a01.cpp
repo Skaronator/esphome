@@ -160,6 +160,7 @@ void EPaperT133A01::wait_for_idle_sync_() const {
 }
 
 void EPaperT133A01::cs1_command_(uint8_t value) {
+  this->cs1_release_hold_();
   ESP_LOGV(TAG, "CS1 Command: 0x%02X", value);
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
@@ -168,6 +169,7 @@ void EPaperT133A01::cs1_command_(uint8_t value) {
 }
 
 void EPaperT133A01::cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t length) {
+  this->cs1_release_hold_();
   ESP_LOGV(TAG, "CS1 Cmd: 0x%02X, len=%u", command, (unsigned) length);
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
@@ -177,6 +179,27 @@ void EPaperT133A01::cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t l
     this->cs1_device_.write_array(data, length);
   }
   this->cs1_device_.disable();
+}
+
+void EPaperT133A01::cs1_hold_(const char *reason) {
+  if (this->cs1_held_)
+    return;
+  this->cs1_held_ = true;
+  this->cs1_hold_start_ = millis();
+  this->cs1_hold_reason_ = reason;
+  this->cs1_device_.enable();
+}
+
+void EPaperT133A01::cs1_release_hold_() {
+  if (!this->cs1_held_)
+    return;
+  this->cs1_device_.disable();
+  const uint32_t held_ms = millis() - this->cs1_hold_start_;
+  ESP_LOGV(TAG, "Released CS1 hold (%s) after %u ms", this->cs1_hold_reason_ ? this->cs1_hold_reason_ : "?",
+           (unsigned) held_ms);
+  this->cs1_held_ = false;
+  this->cs1_hold_start_ = 0;
+  this->cs1_hold_reason_ = nullptr;
 }
 
 void EPaperT133A01::dump_config() {
@@ -202,6 +225,8 @@ bool EPaperT133A01::reset() {
 
 bool EPaperT133A01::initialise(bool partial) {
   (void) partial;
+
+  this->cs1_release_hold_();
 
   // Sequence adapted from Seeed_GFX T133A01_Defines.h (EPD_INIT)
   this->wait_for_idle_sync_();
@@ -255,12 +280,13 @@ void EPaperT133A01::power_on() {
     ESP_LOGV(TAG, "BUSY before PON: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // Mirror manufacturer EPD_UPDATE(): keep CS1 asserted while issuing PON and waiting for BUSY.
+  // Keep CS1 asserted while ESPHome's non-blocking wait-for-idle runs.
+  // Do NOT block here; this runs on loopTask and blocking triggers the ESP32 task watchdog.
+  this->cs1_release_hold_();
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
   this->cs1_device_.write_byte(R04_PON);
-  this->wait_for_idle_sync_();
-  this->cs1_device_.disable();
+  this->cs1_hold_("PON");
 
   this->next_delay_ = 30;
 }
@@ -272,14 +298,13 @@ void EPaperT133A01::refresh_screen(bool partial) {
     ESP_LOGV(TAG, "BUSY before DRF: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // Mirror manufacturer EPD_UPDATE(): keep CS1 asserted while issuing DRF and waiting for BUSY.
+  this->cs1_release_hold_();
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
   this->cs1_device_.write_byte(R12_DRF);
   this->dc_pin_->digital_write(true);
   this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
-  this->wait_for_idle_sync_();
-  this->cs1_device_.disable();
+  this->cs1_hold_("DRF");
 
   this->next_delay_ = 30;
 }
@@ -290,20 +315,20 @@ void EPaperT133A01::power_off() {
     ESP_LOGV(TAG, "BUSY before POF: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // Mirror manufacturer EPD_UPDATE(): keep CS1 asserted while issuing POF and waiting for BUSY.
+  this->cs1_release_hold_();
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
   this->cs1_device_.write_byte(R02_POF);
   this->dc_pin_->digital_write(true);
   this->cs1_device_.write_array(POF_V, sizeof(POF_V));
-  this->wait_for_idle_sync_();
-  this->cs1_device_.disable();
+  this->cs1_hold_("POF");
 
   this->next_delay_ = 30;
 }
 
 void EPaperT133A01::deep_sleep() {
   ESP_LOGV(TAG, "Deep sleep");
+  this->cs1_release_hold_();
   this->cmd_data(0x07, SLEEP_V, sizeof(SLEEP_V));
 }
 
