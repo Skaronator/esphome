@@ -41,9 +41,9 @@ class EPaperT133A01 : public EPaperBase {
       cs1_device_{};
 
   // Transfer state (T133A01 uses two controllers/chip-selects; each row is pushed in 2 halves)
-  uint16_t transfer_row_{0};
-  uint16_t transfer_col_{0};
-  bool transfer_half_cs1_{false};
+  size_t transfer_index_{0};
+  bool transfer_on_cs1_{false};
+  bool transfer_dtm_sent_{false};
   bool transfer_prologue_done_{false};
 };
 

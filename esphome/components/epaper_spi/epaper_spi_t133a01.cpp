@@ -288,69 +288,54 @@ bool HOT EPaperT133A01::transfer_data() {
   const uint16_t bytes_per_block_row = width / 4;
   const uint16_t stride = bytes_per_block_row * 2;
 
+  const size_t half_frame_len = static_cast<size_t>(height) * bytes_per_block_row;
+
   if (!this->transfer_prologue_done_) {
     // Transfer prologue (equivalent to EPD_PUSH_NEW_COLORS preamble)
     this->cs1_cmd_data_(RE0_CCSET, CCSET_V_CUR, sizeof(CCSET_V_CUR));
     this->wait_for_idle_sync_();
     delay(10);
 
-    this->transfer_row_ = 0;
-    this->transfer_col_ = 0;
-    this->transfer_half_cs1_ = false;
+    this->transfer_index_ = 0;
+    this->transfer_on_cs1_ = false;
+    this->transfer_dtm_sent_ = false;
     this->transfer_prologue_done_ = true;
   }
 
-  uint16_t row = this->transfer_row_;
-  uint16_t col = this->transfer_col_;
-  bool half_cs1 = this->transfer_half_cs1_;
+  // Manufacturer implementation (EPD_PUSH_NEW_COLORS) streams the entire first half (CS),
+  // then the entire second half (CS1). It sends DTM (0x10) once per half and relies on
+  // the controller auto-incrementing the write address.
+  // Interleaving per-row (or re-sending DTM repeatedly) can result in a blank screen.
 
-  // Send DTM command when starting a half-block
-  if (col == 0) {
-    if (!half_cs1) {
+  if (!this->transfer_dtm_sent_) {
+    if (!this->transfer_on_cs1_) {
       this->command(R10_DTM);
     } else {
       this->cs1_command_(R10_DTM);
     }
+    this->transfer_dtm_sent_ = true;
   }
 
   uint8_t bytes_to_send[MAX_TRANSFER_SIZE];
-  size_t out_idx = 0;
 
-  while (row < height) {
-    const size_t base = (static_cast<size_t>(row) * stride) + (half_cs1 ? bytes_per_block_row : 0);
+  while (true) {
+    size_t out_idx = 0;
 
-    while (col < bytes_per_block_row) {
-      const uint8_t b = this->buffer_[base + col++];
+    while (this->transfer_index_ < half_frame_len && out_idx < sizeof(bytes_to_send)) {
+      const size_t pos = this->transfer_index_++;
+      const uint16_t row = pos / bytes_per_block_row;
+      const uint16_t col = pos % bytes_per_block_row;
+
+      const size_t base = (static_cast<size_t>(row) * stride) + (this->transfer_on_cs1_ ? bytes_per_block_row : 0);
+      const uint8_t b = this->buffer_[base + col];
       const uint8_t hi = (b >> 4) & 0x0F;
       const uint8_t lo = b & 0x0F;
       bytes_to_send[out_idx++] = static_cast<uint8_t>((color_get(hi) << 4) | color_get(lo));
-
-      if (out_idx == sizeof(bytes_to_send)) {
-        this->dc_pin_->digital_write(true);
-        if (!half_cs1) {
-          this->enable();
-          this->write_array(bytes_to_send, out_idx);
-          this->disable();
-        } else {
-          this->cs1_device_.enable();
-          this->cs1_device_.write_array(bytes_to_send, out_idx);
-          this->cs1_device_.disable();
-        }
-        out_idx = 0;
-
-        if (millis() - start_time > MAX_TRANSFER_TIME) {
-          this->transfer_row_ = row;
-          this->transfer_col_ = col;
-          this->transfer_half_cs1_ = half_cs1;
-          return false;
-        }
-      }
     }
 
-    // Flush remainder for this half-row
-    if (out_idx != 0) {
+    if (out_idx > 0) {
       this->dc_pin_->digital_write(true);
-      if (!half_cs1) {
+      if (!this->transfer_on_cs1_) {
         this->enable();
         this->write_array(bytes_to_send, out_idx);
         this->disable();
@@ -359,34 +344,28 @@ bool HOT EPaperT133A01::transfer_data() {
         this->cs1_device_.write_array(bytes_to_send, out_idx);
         this->cs1_device_.disable();
       }
-      out_idx = 0;
     }
 
-    // Advance to next half or next row
-    col = 0;
-    if (!half_cs1) {
-      half_cs1 = true;
-      this->cs1_command_(R10_DTM);
-    } else {
-      half_cs1 = false;
-      row++;
-      if (row < height) {
-        this->command(R10_DTM);
+    if (this->transfer_index_ >= half_frame_len) {
+      if (!this->transfer_on_cs1_) {
+        // Switch to the second half (CS1)
+        this->transfer_on_cs1_ = true;
+        this->transfer_index_ = 0;
+        this->transfer_dtm_sent_ = false;
+        return false;  // Continue next loop
       }
+      break;  // Finished CS1 half too
     }
 
     if (millis() - start_time > MAX_TRANSFER_TIME) {
-      this->transfer_row_ = row;
-      this->transfer_col_ = col;
-      this->transfer_half_cs1_ = half_cs1;
       return false;
     }
   }
 
   // Done
-  this->transfer_row_ = 0;
-  this->transfer_col_ = 0;
-  this->transfer_half_cs1_ = false;
+  this->transfer_index_ = 0;
+  this->transfer_on_cs1_ = false;
+  this->transfer_dtm_sent_ = false;
   this->transfer_prologue_done_ = false;
   return true;
 }
