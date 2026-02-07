@@ -46,6 +46,10 @@ static constexpr uint8_t RB1_DATA[] = {0x02};
 
 static constexpr uint8_t CCSET_V_CUR[] = {0x01};
 
+static constexpr uint32_t PON_BUSY_TIMEOUT_MS = 10 * 1000;
+static constexpr uint32_t POF_BUSY_TIMEOUT_MS = 10 * 1000;
+static constexpr uint32_t DRF_BUSY_TIMEOUT_MS = 180 * 1000;
+
 // Default palette indices used by the manufacturer library in 6-color mode
 static constexpr uint8_t TFT_WHITE = 0x0;
 static constexpr uint8_t TFT_GREEN = 0x2;
@@ -208,6 +212,9 @@ bool EPaperT133A01::initialise(bool partial) {
   this->refresh_phase_ = 0;
   this->power_off_phase_ = 0;
   this->transfer_prologue_phase_ = 0;
+  this->busy_wait_start_ms_ = 0;
+  this->busy_wait_last_log_ms_ = 0;
+  this->busy_wait_label_ = nullptr;
 
   // Sequence adapted from Seeed_GFX T133A01_Defines.h (EPD_INIT)
   this->wait_for_idle_sync_();
@@ -274,11 +281,30 @@ bool EPaperT133A01::power_on_async_() {
       this->dc_pin_->digital_write(false);
       this->cs1_device_.enable();
       this->cs1_device_.write_byte(R04_PON);
-      this->wait_for_idle_(true);
+      this->busy_wait_start_ms_ = millis();
+      this->busy_wait_last_log_ms_ = this->busy_wait_start_ms_;
+      this->busy_wait_label_ = "PON";
       this->update_phase_ = 1;
+      this->delay_until_ = millis() + 10;
       return false;  // let EPaperBase wait for idle in this state
     case 1:
-      // We are idle now. Apply the vendor delay before DRF.
+      if (!this->is_idle_()) {
+        const uint32_t now = millis();
+        const uint32_t elapsed = now - this->busy_wait_start_ms_;
+        if (now - this->busy_wait_last_log_ms_ >= 1000) {
+          this->busy_wait_last_log_ms_ = now;
+          ESP_LOGV(TAG, "BUSY waiting (%s): %u ms (pin=%d)", this->busy_wait_label_ ? this->busy_wait_label_ : "?",
+                   (unsigned) elapsed, this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        }
+        if (elapsed < PON_BUSY_TIMEOUT_MS) {
+          this->delay_until_ = now + 10;
+          return false;
+        }
+        ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing",
+                 this->busy_wait_label_ ? this->busy_wait_label_ : "PON", (unsigned) elapsed);
+      }
+
+      // Idle (or timed out). Apply the vendor delay before DRF.
       this->cs1_device_.disable();
       this->delay_until_ = millis() + 30;
       this->update_phase_ = 2;
@@ -312,10 +338,29 @@ bool EPaperT133A01::refresh_screen_async_(bool partial) {
       this->cs1_device_.write_byte(R12_DRF);
       this->dc_pin_->digital_write(true);
       this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
-      this->wait_for_idle_(true);
+      this->busy_wait_start_ms_ = millis();
+      this->busy_wait_last_log_ms_ = this->busy_wait_start_ms_;
+      this->busy_wait_label_ = "DRF";
       this->refresh_phase_ = 1;
+      this->delay_until_ = millis() + 10;
       return false;  // let EPaperBase wait for idle
     case 1:
+      if (!this->is_idle_()) {
+        const uint32_t now = millis();
+        const uint32_t elapsed = now - this->busy_wait_start_ms_;
+        if (now - this->busy_wait_last_log_ms_ >= 1000) {
+          this->busy_wait_last_log_ms_ = now;
+          ESP_LOGV(TAG, "BUSY waiting (%s): %u ms (pin=%d)", this->busy_wait_label_ ? this->busy_wait_label_ : "?",
+                   (unsigned) elapsed, this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        }
+        if (elapsed < DRF_BUSY_TIMEOUT_MS) {
+          this->delay_until_ = now + 10;
+          return false;
+        }
+        ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing",
+                 this->busy_wait_label_ ? this->busy_wait_label_ : "DRF", (unsigned) elapsed);
+      }
+
       this->cs1_device_.disable();
       this->delay_until_ = millis() + 30;
       this->refresh_phase_ = 2;
@@ -347,10 +392,29 @@ bool EPaperT133A01::power_off_async_() {
       this->cs1_device_.write_byte(R02_POF);
       this->dc_pin_->digital_write(true);
       this->cs1_device_.write_array(POF_V, sizeof(POF_V));
-      this->wait_for_idle_(true);
+      this->busy_wait_start_ms_ = millis();
+      this->busy_wait_last_log_ms_ = this->busy_wait_start_ms_;
+      this->busy_wait_label_ = "POF";
       this->power_off_phase_ = 1;
+      this->delay_until_ = millis() + 10;
       return false;  // let EPaperBase wait for idle
     case 1:
+      if (!this->is_idle_()) {
+        const uint32_t now = millis();
+        const uint32_t elapsed = now - this->busy_wait_start_ms_;
+        if (now - this->busy_wait_last_log_ms_ >= 1000) {
+          this->busy_wait_last_log_ms_ = now;
+          ESP_LOGV(TAG, "BUSY waiting (%s): %u ms (pin=%d)", this->busy_wait_label_ ? this->busy_wait_label_ : "?",
+                   (unsigned) elapsed, this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        }
+        if (elapsed < POF_BUSY_TIMEOUT_MS) {
+          this->delay_until_ = now + 10;
+          return false;
+        }
+        ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing",
+                 this->busy_wait_label_ ? this->busy_wait_label_ : "POF", (unsigned) elapsed);
+      }
+
       this->cs1_device_.disable();
       this->delay_until_ = millis() + 30;
       this->power_off_phase_ = 2;
@@ -414,7 +478,6 @@ bool HOT EPaperT133A01::transfer_data() {
     if (this->transfer_prologue_phase_ == 0) {
       this->cs1_cmd_data_(RE0_CCSET, CCSET_V_CUR, sizeof(CCSET_V_CUR));
       this->transfer_prologue_phase_ = 1;
-      this->wait_for_idle_(true);
       return false;  // EPaperBase will wait for idle before calling again
     }
     if (this->transfer_prologue_phase_ == 1) {

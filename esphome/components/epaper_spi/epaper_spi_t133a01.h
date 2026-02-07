@@ -58,6 +58,10 @@ class EPaperT133A01 : public EPaperBase {
   uint8_t refresh_phase_{0};
   uint8_t power_off_phase_{0};
 
+  uint32_t busy_wait_start_ms_{0};
+  uint32_t busy_wait_last_log_ms_{0};
+  const char *busy_wait_label_{nullptr};
+
   // Transfer prologue sequencing to avoid blocking waits.
   uint8_t transfer_prologue_phase_{0};
 };
