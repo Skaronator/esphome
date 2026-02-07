@@ -22,6 +22,16 @@ class EPaperT133A01 : public EPaperBase {
   void clear() override;
 
  protected:
+  bool should_wait_for_idle_before_state_(EPaperState state) const override {
+    // The T133A01 controller can get stuck with BUSY asserted if DRF never completes.
+    // Allow POWER_OFF to run anyway so the driver can attempt a recovery (with its
+    // own timeout logic) instead of deadlocking the EPaperBase state machine.
+    if (state == EPaperState::POWER_OFF)
+      return false;
+    return EPaperBase::should_wait_for_idle_before_state_(state);
+  }
+
+ protected:
   bool reset() override;
   bool initialise(bool partial) override;
 

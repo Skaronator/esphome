@@ -114,6 +114,11 @@ class EPaperBase : public Display,
   void draw_pixel_at(int x, int y, Color color) override;
   void process_state_();
 
+  // Hook to customize whether the EPaperBase loop should wait for BUSY to clear
+  // before allowing the state machine to run. Default behavior matches historic
+  // behavior (wait for all states after SHOULD_WAIT).
+  virtual bool should_wait_for_idle_before_state_(EPaperState state) const { return state > EPaperState::SHOULD_WAIT; }
+
   // Optional async wrappers for multi-step controllers.
   // Default behavior is to call the existing virtual methods and complete in one call.
   virtual bool power_on_async_() {

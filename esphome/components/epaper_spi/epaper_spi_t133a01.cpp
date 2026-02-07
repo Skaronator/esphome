@@ -289,6 +289,7 @@ bool EPaperT133A01::power_on_async_() {
       this->delay_until_ = millis() + 10;
       return false;
     case 1:
+      bool timed_out = false;
       if (!this->is_idle_()) {
         const uint32_t now = millis();
         const uint32_t elapsed = now - this->busy_wait_start_ms_;
@@ -303,13 +304,21 @@ bool EPaperT133A01::power_on_async_() {
         }
         ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing",
                  this->busy_wait_label_ ? this->busy_wait_label_ : "PON", (unsigned) elapsed);
+        timed_out = true;
       }
 
       {
         const uint32_t now = millis();
         const uint32_t elapsed = now - this->busy_wait_start_ms_;
-        ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)", this->busy_wait_label_ ? this->busy_wait_label_ : "PON",
-                 (unsigned) elapsed, this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        if (this->is_idle_()) {
+          ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)",
+                   this->busy_wait_label_ ? this->busy_wait_label_ : "PON", (unsigned) elapsed,
+                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        } else if (timed_out) {
+          ESP_LOGV(TAG, "BUSY still active (%s) after %u ms (pin=%d)",
+                   this->busy_wait_label_ ? this->busy_wait_label_ : "PON", (unsigned) elapsed,
+                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        }
       }
 
       // Idle (or timed out). Apply the vendor delay before DRF.
@@ -353,6 +362,7 @@ bool EPaperT133A01::refresh_screen_async_(bool partial) {
       this->delay_until_ = millis() + 10;
       return false;
     case 1:
+      bool timed_out = false;
       if (!this->is_idle_()) {
         const uint32_t now = millis();
         const uint32_t elapsed = now - this->busy_wait_start_ms_;
@@ -367,13 +377,21 @@ bool EPaperT133A01::refresh_screen_async_(bool partial) {
         }
         ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing",
                  this->busy_wait_label_ ? this->busy_wait_label_ : "DRF", (unsigned) elapsed);
+        timed_out = true;
       }
 
       {
         const uint32_t now = millis();
         const uint32_t elapsed = now - this->busy_wait_start_ms_;
-        ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)", this->busy_wait_label_ ? this->busy_wait_label_ : "DRF",
-                 (unsigned) elapsed, this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        if (this->is_idle_()) {
+          ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)",
+                   this->busy_wait_label_ ? this->busy_wait_label_ : "DRF", (unsigned) elapsed,
+                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        } else if (timed_out) {
+          ESP_LOGV(TAG, "BUSY still active (%s) after %u ms (pin=%d)",
+                   this->busy_wait_label_ ? this->busy_wait_label_ : "DRF", (unsigned) elapsed,
+                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        }
       }
       this->delay_until_ = millis() + 30;
       this->refresh_phase_ = 2;
@@ -413,6 +431,7 @@ bool EPaperT133A01::power_off_async_() {
       this->delay_until_ = millis() + 10;
       return false;
     case 1:
+      bool timed_out = false;
       if (!this->is_idle_()) {
         const uint32_t now = millis();
         const uint32_t elapsed = now - this->busy_wait_start_ms_;
@@ -427,13 +446,21 @@ bool EPaperT133A01::power_off_async_() {
         }
         ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing",
                  this->busy_wait_label_ ? this->busy_wait_label_ : "POF", (unsigned) elapsed);
+        timed_out = true;
       }
 
       {
         const uint32_t now = millis();
         const uint32_t elapsed = now - this->busy_wait_start_ms_;
-        ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)", this->busy_wait_label_ ? this->busy_wait_label_ : "POF",
-                 (unsigned) elapsed, this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        if (this->is_idle_()) {
+          ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)",
+                   this->busy_wait_label_ ? this->busy_wait_label_ : "POF", (unsigned) elapsed,
+                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        } else if (timed_out) {
+          ESP_LOGV(TAG, "BUSY still active (%s) after %u ms (pin=%d)",
+                   this->busy_wait_label_ ? this->busy_wait_label_ : "POF", (unsigned) elapsed,
+                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+        }
       }
       this->delay_until_ = millis() + 30;
       this->power_off_phase_ = 2;
