@@ -142,8 +142,20 @@ void EPaperT133A01::setup() {
 void EPaperT133A01::wait_for_idle_sync_() const {
   if (this->busy_pin_ == nullptr)
     return;
+  const uint32_t start = millis();
+  bool printed_waiting = false;
   while (this->busy_pin_->digital_read()) {
+    if (!printed_waiting) {
+      ESP_LOGV(TAG, "Waiting for BUSY to clear...");
+      printed_waiting = true;
+    }
     delay(10);
+    if (printed_waiting && (millis() - start) >= 5000 && ((millis() - start) % 1000) < 20) {
+      ESP_LOGV(TAG, "Still BUSY after %u ms", (unsigned) (millis() - start));
+    }
+  }
+  if (printed_waiting) {
+    ESP_LOGV(TAG, "BUSY cleared after %u ms", (unsigned) (millis() - start));
   }
 }
 
@@ -156,7 +168,7 @@ void EPaperT133A01::cs1_command_(uint8_t value) {
 }
 
 void EPaperT133A01::cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t length) {
-  ESP_LOGVV(TAG, "CS1 Cmd: 0x%02X, len=%u", command, (unsigned) length);
+  ESP_LOGV(TAG, "CS1 Cmd: 0x%02X, len=%u", command, (unsigned) length);
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
   this->cs1_device_.write_byte(command);
@@ -165,6 +177,14 @@ void EPaperT133A01::cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t l
     this->cs1_device_.write_array(data, length);
   }
   this->cs1_device_.disable();
+}
+
+void EPaperT133A01::dump_config() {
+  EPaperBase::dump_config();
+  LOG_PIN("  CS1 Pin: ", this->cs1_pin_);
+  for (auto *pin : this->enable_pins_) {
+    LOG_PIN("  Enable Pin: ", pin);
+  }
 }
 
 bool EPaperT133A01::reset() {
@@ -185,6 +205,10 @@ bool EPaperT133A01::initialise(bool partial) {
 
   // Sequence adapted from Seeed_GFX T133A01_Defines.h (EPD_INIT)
   this->wait_for_idle_sync_();
+
+  if (this->busy_pin_ != nullptr) {
+    ESP_LOGV(TAG, "BUSY before init: %d", (int) this->busy_pin_->digital_read());
+  }
 
   // 0x74 is sent on CS (primary)
   this->cmd_data(0x74, R74_DATA, sizeof(R74_DATA));
@@ -224,6 +248,9 @@ bool EPaperT133A01::initialise(bool partial) {
 
 void EPaperT133A01::power_on() {
   ESP_LOGV(TAG, "Power on");
+  if (this->busy_pin_ != nullptr) {
+    ESP_LOGV(TAG, "BUSY before PON: %d", (int) this->busy_pin_->digital_read());
+  }
   this->cs1_command_(R04_PON);
   this->next_delay_ = 30;
 }
@@ -231,12 +258,18 @@ void EPaperT133A01::power_on() {
 void EPaperT133A01::refresh_screen(bool partial) {
   (void) partial;
   ESP_LOGV(TAG, "Refresh");
+  if (this->busy_pin_ != nullptr) {
+    ESP_LOGV(TAG, "BUSY before DRF: %d", (int) this->busy_pin_->digital_read());
+  }
   this->cs1_cmd_data_(R12_DRF, DRF_V, sizeof(DRF_V));
   this->next_delay_ = 30;
 }
 
 void EPaperT133A01::power_off() {
   ESP_LOGV(TAG, "Power off");
+  if (this->busy_pin_ != nullptr) {
+    ESP_LOGV(TAG, "BUSY before POF: %d", (int) this->busy_pin_->digital_read());
+  }
   this->cs1_cmd_data_(R02_POF, POF_V, sizeof(POF_V));
   this->next_delay_ = 30;
 }

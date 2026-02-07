@@ -16,6 +16,8 @@ class EPaperT133A01 : public EPaperBase {
 
   void setup() override;
 
+  void dump_config() override;
+
   void fill(Color color) override;
   void clear() override;
 
