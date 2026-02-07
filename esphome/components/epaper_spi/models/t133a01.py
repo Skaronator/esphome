@@ -18,7 +18,7 @@ t133a01 = T133A01(
     "T133A01",
     width=1200,
     height=1600,
-    data_rate="20MHz",
+    data_rate="10MHz",
     minimum_update_interval="30s",
     reset_duration="20ms",
 )
