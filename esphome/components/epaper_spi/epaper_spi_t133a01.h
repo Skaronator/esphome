@@ -47,6 +47,7 @@ class EPaperT133A01 : public EPaperBase {
   bool transfer_on_cs1_{false};
   bool transfer_dtm_sent_{false};
   bool transfer_prologue_done_{false};
+  bool transfer_streaming_{false};
 };
 
 }  // namespace esphome::epaper_spi

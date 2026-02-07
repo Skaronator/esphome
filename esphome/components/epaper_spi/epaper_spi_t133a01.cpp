@@ -311,8 +311,6 @@ void HOT EPaperT133A01::draw_pixel_at(int x, int y, Color color) {
 }
 
 bool HOT EPaperT133A01::transfer_data() {
-  const uint32_t start_time = App.get_loop_component_start_time();
-
   const uint16_t width = this->get_width_internal();
   const uint16_t height = this->get_height_internal();
 
@@ -332,6 +330,7 @@ bool HOT EPaperT133A01::transfer_data() {
     this->transfer_index_ = 0;
     this->transfer_on_cs1_ = false;
     this->transfer_dtm_sent_ = false;
+    this->transfer_streaming_ = false;
     this->transfer_prologue_done_ = true;
   }
 
@@ -340,18 +339,26 @@ bool HOT EPaperT133A01::transfer_data() {
   // the controller auto-incrementing the write address.
   // Interleaving per-row (or re-sending DTM repeatedly) can result in a blank screen.
 
-  if (!this->transfer_dtm_sent_) {
-    if (!this->transfer_on_cs1_) {
-      this->command(R10_DTM);
-    } else {
-      this->cs1_command_(R10_DTM);
-    }
-    this->transfer_dtm_sent_ = true;
-  }
-
   uint8_t bytes_to_send[MAX_TRANSFER_SIZE];
 
   while (true) {
+    // Important: the manufacturer driver keeps CS asserted for the entire (half) frame transfer.
+    // Toggling CS between the 0x10 (DTM) command and subsequent data can result in the controller
+    // ignoring the data stream and leaving the screen blank.
+    if (!this->transfer_dtm_sent_) {
+      this->dc_pin_->digital_write(false);
+      if (!this->transfer_on_cs1_) {
+        this->enable();
+        this->write_byte(R10_DTM);
+      } else {
+        this->cs1_device_.enable();
+        this->cs1_device_.write_byte(R10_DTM);
+      }
+      this->dc_pin_->digital_write(true);
+      this->transfer_dtm_sent_ = true;
+      this->transfer_streaming_ = true;
+    }
+
     size_t out_idx = 0;
 
     while (this->transfer_index_ < half_frame_len && out_idx < sizeof(bytes_to_send)) {
@@ -367,31 +374,31 @@ bool HOT EPaperT133A01::transfer_data() {
     }
 
     if (out_idx > 0) {
-      this->dc_pin_->digital_write(true);
       if (!this->transfer_on_cs1_) {
-        this->enable();
         this->write_array(bytes_to_send, out_idx);
-        this->disable();
       } else {
-        this->cs1_device_.enable();
         this->cs1_device_.write_array(bytes_to_send, out_idx);
-        this->cs1_device_.disable();
       }
     }
 
     if (this->transfer_index_ >= half_frame_len) {
       if (!this->transfer_on_cs1_) {
+        // Finished first half (CS). Release CS before switching to CS1.
+        if (this->transfer_streaming_) {
+          this->disable();
+        }
         // Switch to the second half (CS1)
         this->transfer_on_cs1_ = true;
         this->transfer_index_ = 0;
         this->transfer_dtm_sent_ = false;
-        return false;  // Continue next loop
+        this->transfer_streaming_ = false;
+        continue;  // Continue with CS1 half in this call
+      }
+      // Finished second half (CS1). Release CS1.
+      if (this->transfer_streaming_) {
+        this->cs1_device_.disable();
       }
       break;  // Finished CS1 half too
-    }
-
-    if (millis() - start_time > MAX_TRANSFER_TIME) {
-      return false;
     }
   }
 
@@ -400,6 +407,7 @@ bool HOT EPaperT133A01::transfer_data() {
   this->transfer_on_cs1_ = false;
   this->transfer_dtm_sent_ = false;
   this->transfer_prologue_done_ = false;
+  this->transfer_streaming_ = false;
   return true;
 }
 
