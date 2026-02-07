@@ -276,7 +276,7 @@ void EPaperT133A01::power_on() {
 bool EPaperT133A01::power_on_async_() {
   // Vendor EPD_UPDATE(): CS1 low, PON, CHECK_BUSY, CS1 high, delay(30)
   switch (this->update_phase_) {
-    case 0:
+    case 0: {
       ESP_LOGV(TAG, "EPD_UPDATE: PON");
       this->dc_pin_->digital_write(false);
       this->cs1_device_.enable();
@@ -288,7 +288,8 @@ bool EPaperT133A01::power_on_async_() {
       this->update_phase_ = 1;
       this->delay_until_ = millis() + 10;
       return false;
-    case 1:
+    }
+    case 1: {
       bool timed_out = false;
       if (!this->is_idle_()) {
         const uint32_t now = millis();
@@ -325,6 +326,7 @@ bool EPaperT133A01::power_on_async_() {
       this->delay_until_ = millis() + 30;
       this->update_phase_ = 2;
       return false;
+    }
     default:
       this->update_phase_ = 0;
       return true;
@@ -347,7 +349,7 @@ bool EPaperT133A01::refresh_screen_async_(bool partial) {
   (void) partial;
   // Vendor EPD_UPDATE(): CS1 low, DRF, CHECK_BUSY, CS1 high, delay(30)
   switch (this->refresh_phase_) {
-    case 0:
+    case 0: {
       ESP_LOGV(TAG, "EPD_UPDATE: DRF");
       this->dc_pin_->digital_write(false);
       this->cs1_device_.enable();
@@ -361,7 +363,8 @@ bool EPaperT133A01::refresh_screen_async_(bool partial) {
       this->refresh_phase_ = 1;
       this->delay_until_ = millis() + 10;
       return false;
-    case 1:
+    }
+    case 1: {
       bool timed_out = false;
       if (!this->is_idle_()) {
         const uint32_t now = millis();
@@ -396,6 +399,7 @@ bool EPaperT133A01::refresh_screen_async_(bool partial) {
       this->delay_until_ = millis() + 30;
       this->refresh_phase_ = 2;
       return false;
+    }
     default:
       this->refresh_phase_ = 0;
       return true;
@@ -416,7 +420,7 @@ void EPaperT133A01::power_off() {
 bool EPaperT133A01::power_off_async_() {
   // Vendor EPD_UPDATE(): CS1 low, POF, CHECK_BUSY, CS1 high, delay(30)
   switch (this->power_off_phase_) {
-    case 0:
+    case 0: {
       ESP_LOGV(TAG, "EPD_UPDATE: POF");
       this->dc_pin_->digital_write(false);
       this->cs1_device_.enable();
@@ -430,7 +434,8 @@ bool EPaperT133A01::power_off_async_() {
       this->power_off_phase_ = 1;
       this->delay_until_ = millis() + 10;
       return false;
-    case 1:
+    }
+    case 1: {
       bool timed_out = false;
       if (!this->is_idle_()) {
         const uint32_t now = millis();
@@ -465,6 +470,7 @@ bool EPaperT133A01::power_off_async_() {
       this->delay_until_ = millis() + 30;
       this->power_off_phase_ = 2;
       return false;
+    }
     default:
       this->power_off_phase_ = 0;
       return true;
