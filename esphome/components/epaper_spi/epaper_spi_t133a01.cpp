@@ -228,19 +228,22 @@ bool EPaperT133A01::initialise(bool partial) {
   delay(10);
   this->cs1_cmd_data_(R61_TRES, TRES_V, sizeof(TRES_V));
   delay(10);
-  this->cs1_cmd_data_(R01_PWR, PWR_V, sizeof(PWR_V));
+
+  // Note: In the manufacturer macro EPD_INIT(), commands after TRES are issued with CS1 deasserted,
+  // so they are sent on the primary CS.
+  this->cmd_data(R01_PWR, PWR_V, sizeof(PWR_V));
   delay(10);
-  this->cs1_cmd_data_(0xB6, RB6_DATA, sizeof(RB6_DATA));
+  this->cmd_data(0xB6, RB6_DATA, sizeof(RB6_DATA));
   delay(10);
-  this->cs1_cmd_data_(R06_BTST_P, BTST_P_V, sizeof(BTST_P_V));
+  this->cmd_data(R06_BTST_P, BTST_P_V, sizeof(BTST_P_V));
   delay(10);
-  this->cs1_cmd_data_(0xB7, RB7_DATA, sizeof(RB7_DATA));
+  this->cmd_data(0xB7, RB7_DATA, sizeof(RB7_DATA));
   delay(10);
-  this->cs1_cmd_data_(R05_BTST_N, BTST_N_V, sizeof(BTST_N_V));
+  this->cmd_data(R05_BTST_N, BTST_N_V, sizeof(BTST_N_V));
   delay(10);
-  this->cs1_cmd_data_(0xB0, RB0_DATA, sizeof(RB0_DATA));
+  this->cmd_data(0xB0, RB0_DATA, sizeof(RB0_DATA));
   delay(10);
-  this->cs1_cmd_data_(0xB1, RB1_DATA, sizeof(RB1_DATA));
+  this->cmd_data(0xB1, RB1_DATA, sizeof(RB1_DATA));
   delay(10);
 
   return true;
@@ -276,7 +279,7 @@ void EPaperT133A01::power_off() {
 
 void EPaperT133A01::deep_sleep() {
   ESP_LOGV(TAG, "Deep sleep");
-  this->cs1_cmd_data_(0x07, SLEEP_V, sizeof(SLEEP_V));
+  this->cmd_data(0x07, SLEEP_V, sizeof(SLEEP_V));
 }
 
 void EPaperT133A01::fill(Color color) {
