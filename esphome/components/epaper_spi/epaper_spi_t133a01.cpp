@@ -117,6 +117,7 @@ static constexpr uint8_t color_get(uint8_t nibble) {
 }
 
 void EPaperT133A01::setup() {
+  ESP_LOGI(TAG, "T133A01 driver marker: async-update v2");
   EPaperBase::setup();
   if (this->is_failed())
     return;
