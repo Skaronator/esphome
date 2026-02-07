@@ -226,7 +226,25 @@ bool EPaperT133A01::initialise(bool partial) {
   // 0x74 is sent on CS (primary)
   this->cmd_data(0x74, R74_DATA, sizeof(R74_DATA));
 
-  // Remaining init commands are sent on CS1
+  // Remaining init commands are sent on CS1 in the manufacturer code.
+  // In practice, this panel is driven by two controller halves (CS + CS1). We send
+  // the same init sequence to both to avoid one half being left in a different state.
+  this->cmd_data(0xF0, RF0_DATA, sizeof(RF0_DATA));
+  delay(10);
+  this->cmd_data(R00_PSR, PSR_V, sizeof(PSR_V));
+  delay(10);
+  this->cmd_data(R50_CDI, CDI_V, sizeof(CDI_V));
+  delay(10);
+  this->cmd_data(0x60, R60_DATA, sizeof(R60_DATA));
+  delay(10);
+  this->cmd_data(0x86, R86_DATA, sizeof(R86_DATA));
+  delay(10);
+  this->cmd_data(RE3_PWS, PWS_V, sizeof(PWS_V));
+  delay(10);
+  this->cmd_data(R61_TRES, TRES_V, sizeof(TRES_V));
+  delay(10);
+
+  // CS1 init sequence
   this->cs1_cmd_data_(0xF0, RF0_DATA, sizeof(RF0_DATA));
   delay(10);
   this->cs1_cmd_data_(R00_PSR, PSR_V, sizeof(PSR_V));
