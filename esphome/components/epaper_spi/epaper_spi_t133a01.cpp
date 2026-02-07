@@ -187,7 +187,6 @@ void EPaperT133A01::cs1_hold_(const char *reason) {
   this->cs1_held_ = true;
   this->cs1_hold_start_ = millis();
   this->cs1_hold_reason_ = reason;
-  this->cs1_device_.enable();
 }
 
 void EPaperT133A01::cs1_release_hold_() {
@@ -285,8 +284,8 @@ void EPaperT133A01::power_on() {
   this->cs1_release_hold_();
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
-  this->cs1_device_.write_byte(R04_PON);
   this->cs1_hold_("PON");
+  this->cs1_device_.write_byte(R04_PON);
 
   this->next_delay_ = 30;
 }
@@ -301,10 +300,10 @@ void EPaperT133A01::refresh_screen(bool partial) {
   this->cs1_release_hold_();
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
+  this->cs1_hold_("DRF");
   this->cs1_device_.write_byte(R12_DRF);
   this->dc_pin_->digital_write(true);
   this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
-  this->cs1_hold_("DRF");
 
   this->next_delay_ = 30;
 }
@@ -318,10 +317,10 @@ void EPaperT133A01::power_off() {
   this->cs1_release_hold_();
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
+  this->cs1_hold_("POF");
   this->cs1_device_.write_byte(R02_POF);
   this->dc_pin_->digital_write(true);
   this->cs1_device_.write_array(POF_V, sizeof(POF_V));
-  this->cs1_hold_("POF");
 
   this->next_delay_ = 30;
 }
