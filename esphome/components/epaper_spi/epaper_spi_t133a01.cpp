@@ -269,6 +269,7 @@ bool EPaperT133A01::power_on_async_() {
   // Vendor EPD_UPDATE(): CS1 low, PON, CHECK_BUSY, CS1 high, delay(30)
   switch (this->update_phase_) {
     case 0:
+      ESP_LOGV(TAG, "EPD_UPDATE: PON (holding CS1 until idle)");
       this->dc_pin_->digital_write(false);
       this->cs1_device_.enable();
       this->cs1_device_.write_byte(R04_PON);
@@ -304,6 +305,7 @@ bool EPaperT133A01::refresh_screen_async_(bool partial) {
   // Vendor EPD_UPDATE(): CS1 low, DRF, CHECK_BUSY, CS1 high, delay(30)
   switch (this->refresh_phase_) {
     case 0:
+      ESP_LOGV(TAG, "EPD_UPDATE: DRF (holding CS1 until idle)");
       this->dc_pin_->digital_write(false);
       this->cs1_device_.enable();
       this->cs1_device_.write_byte(R12_DRF);
@@ -338,6 +340,7 @@ bool EPaperT133A01::power_off_async_() {
   // Vendor EPD_UPDATE(): CS1 low, POF, CHECK_BUSY, CS1 high, delay(30)
   switch (this->power_off_phase_) {
     case 0:
+      ESP_LOGV(TAG, "EPD_UPDATE: POF (holding CS1 until idle)");
       this->dc_pin_->digital_write(false);
       this->cs1_device_.enable();
       this->cs1_device_.write_byte(R02_POF);
