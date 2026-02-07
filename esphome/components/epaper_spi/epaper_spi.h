@@ -114,6 +114,25 @@ class EPaperBase : public Display,
   void draw_pixel_at(int x, int y, Color color) override;
   void process_state_();
 
+  // Optional async wrappers for multi-step controllers.
+  // Default behavior is to call the existing virtual methods and complete in one call.
+  virtual bool power_on_async_() {
+    this->power_on();
+    return true;
+  }
+  virtual bool refresh_screen_async_(bool partial) {
+    this->refresh_screen(partial);
+    return true;
+  }
+  virtual bool power_off_async_() {
+    this->power_off();
+    return true;
+  }
+  virtual bool deep_sleep_async_() {
+    this->deep_sleep();
+    return true;
+  }
+
   const char *epaper_state_to_string_();
   bool is_idle_() const;
   void setup_pins_() const;

@@ -205,20 +205,28 @@ void EPaperBase::process_state_() {
       this->set_state_(EPaperState::POWER_ON);
       break;
     case EPaperState::POWER_ON:
-      this->power_on();
+      if (!this->power_on_async_()) {
+        return;
+      }
       this->set_state_(EPaperState::REFRESH_SCREEN);
       break;
     case EPaperState::REFRESH_SCREEN:
-      this->refresh_screen(this->update_count_ != 0);
+      if (!this->refresh_screen_async_(this->update_count_ != 0)) {
+        return;
+      }
       this->update_count_ = (this->update_count_ + 1) % this->full_update_every_;
       this->set_state_(EPaperState::POWER_OFF);
       break;
     case EPaperState::POWER_OFF:
-      this->power_off();
+      if (!this->power_off_async_()) {
+        return;
+      }
       this->set_state_(EPaperState::DEEP_SLEEP);
       break;
     case EPaperState::DEEP_SLEEP:
-      this->deep_sleep();
+      if (!this->deep_sleep_async_()) {
+        return;
+      }
       this->set_state_(EPaperState::IDLE);
       ESP_LOGD(TAG, "Display update took %" PRIu32 " ms", millis() - this->update_start_time_);
       break;

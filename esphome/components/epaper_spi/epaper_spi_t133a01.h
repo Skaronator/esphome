@@ -31,13 +31,14 @@ class EPaperT133A01 : public EPaperBase {
   void power_off() override;
   void deep_sleep() override;
 
+  bool power_on_async_() override;
+  bool refresh_screen_async_(bool partial) override;
+  bool power_off_async_() override;
+
   void draw_pixel_at(int x, int y, Color color) override;
 
   void cs1_command_(uint8_t value);
   void cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t length);
-
-  void cs1_hold_(const char *reason);
-  void cs1_release_hold_();
 
   void wait_for_idle_sync_() const;
 
@@ -52,10 +53,13 @@ class EPaperT133A01 : public EPaperBase {
   bool transfer_prologue_done_{false};
   bool transfer_streaming_{false};
 
-  // Keep CS1 asserted across non-blocking BUSY waits.
-  bool cs1_held_{false};
-  uint32_t cs1_hold_start_{0};
-  const char *cs1_hold_reason_{nullptr};
+  // Vendor-like update sequencing (EPD_UPDATE): command -> wait BUSY -> delay -> next command
+  uint8_t update_phase_{0};
+  uint8_t refresh_phase_{0};
+  uint8_t power_off_phase_{0};
+
+  // Transfer prologue sequencing to avoid blocking waits.
+  uint8_t transfer_prologue_phase_{0};
 };
 
 }  // namespace esphome::epaper_spi

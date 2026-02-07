@@ -160,7 +160,6 @@ void EPaperT133A01::wait_for_idle_sync_() const {
 }
 
 void EPaperT133A01::cs1_command_(uint8_t value) {
-  this->cs1_release_hold_();
   ESP_LOGV(TAG, "CS1 Command: 0x%02X", value);
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
@@ -169,7 +168,6 @@ void EPaperT133A01::cs1_command_(uint8_t value) {
 }
 
 void EPaperT133A01::cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t length) {
-  this->cs1_release_hold_();
   ESP_LOGV(TAG, "CS1 Cmd: 0x%02X, len=%u", command, (unsigned) length);
   this->dc_pin_->digital_write(false);
   this->cs1_device_.enable();
@@ -179,26 +177,6 @@ void EPaperT133A01::cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t l
     this->cs1_device_.write_array(data, length);
   }
   this->cs1_device_.disable();
-}
-
-void EPaperT133A01::cs1_hold_(const char *reason) {
-  if (this->cs1_held_)
-    return;
-  this->cs1_held_ = true;
-  this->cs1_hold_start_ = millis();
-  this->cs1_hold_reason_ = reason;
-}
-
-void EPaperT133A01::cs1_release_hold_() {
-  if (!this->cs1_held_)
-    return;
-  this->cs1_device_.disable();
-  const uint32_t held_ms = millis() - this->cs1_hold_start_;
-  ESP_LOGV(TAG, "Released CS1 hold (%s) after %u ms", this->cs1_hold_reason_ ? this->cs1_hold_reason_ : "?",
-           (unsigned) held_ms);
-  this->cs1_held_ = false;
-  this->cs1_hold_start_ = 0;
-  this->cs1_hold_reason_ = nullptr;
 }
 
 void EPaperT133A01::dump_config() {
@@ -225,7 +203,10 @@ bool EPaperT133A01::reset() {
 bool EPaperT133A01::initialise(bool partial) {
   (void) partial;
 
-  this->cs1_release_hold_();
+  this->update_phase_ = 0;
+  this->refresh_phase_ = 0;
+  this->power_off_phase_ = 0;
+  this->transfer_prologue_phase_ = 0;
 
   // Sequence adapted from Seeed_GFX T133A01_Defines.h (EPD_INIT)
   this->wait_for_idle_sync_();
@@ -279,15 +260,27 @@ void EPaperT133A01::power_on() {
     ESP_LOGV(TAG, "BUSY before PON: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // Keep CS1 asserted while ESPHome's non-blocking wait-for-idle runs.
-  // Do NOT block here; this runs on loopTask and blocking triggers the ESP32 task watchdog.
-  this->cs1_release_hold_();
-  this->dc_pin_->digital_write(false);
-  this->cs1_device_.enable();
-  this->cs1_hold_("PON");
-  this->cs1_device_.write_byte(R04_PON);
+  // Legacy one-shot implementation kept for other models; T133A01 uses power_on_async_()
+  this->cs1_command_(R04_PON);
+  this->next_delay_ = 0;
+}
 
-  this->next_delay_ = 30;
+bool EPaperT133A01::power_on_async_() {
+  // Vendor EPD_UPDATE(): CS1 low, PON, CHECK_BUSY, CS1 high, delay(30)
+  switch (this->update_phase_) {
+    case 0:
+      this->cs1_command_(R04_PON);
+      this->update_phase_ = 1;
+      return false;  // let EPaperBase wait for idle in this state
+    case 1:
+      // We are idle now (EPaperBase waited). Apply the vendor delay before DRF.
+      this->next_delay_ = 30;
+      this->update_phase_ = 2;
+      return false;
+    default:
+      this->update_phase_ = 0;
+      return true;
+  }
 }
 
 void EPaperT133A01::refresh_screen(bool partial) {
@@ -297,15 +290,27 @@ void EPaperT133A01::refresh_screen(bool partial) {
     ESP_LOGV(TAG, "BUSY before DRF: %d", (int) this->busy_pin_->digital_read());
   }
 
-  this->cs1_release_hold_();
-  this->dc_pin_->digital_write(false);
-  this->cs1_device_.enable();
-  this->cs1_hold_("DRF");
-  this->cs1_device_.write_byte(R12_DRF);
-  this->dc_pin_->digital_write(true);
-  this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
+  // Legacy one-shot implementation kept for other models; T133A01 uses refresh_screen_async_()
+  this->cs1_cmd_data_(R12_DRF, DRF_V, sizeof(DRF_V));
+  this->next_delay_ = 0;
+}
 
-  this->next_delay_ = 30;
+bool EPaperT133A01::refresh_screen_async_(bool partial) {
+  (void) partial;
+  // Vendor EPD_UPDATE(): CS1 low, DRF, CHECK_BUSY, CS1 high, delay(30)
+  switch (this->refresh_phase_) {
+    case 0:
+      this->cs1_cmd_data_(R12_DRF, DRF_V, sizeof(DRF_V));
+      this->refresh_phase_ = 1;
+      return false;  // let EPaperBase wait for idle
+    case 1:
+      this->next_delay_ = 30;
+      this->refresh_phase_ = 2;
+      return false;
+    default:
+      this->refresh_phase_ = 0;
+      return true;
+  }
 }
 
 void EPaperT133A01::power_off() {
@@ -314,20 +319,30 @@ void EPaperT133A01::power_off() {
     ESP_LOGV(TAG, "BUSY before POF: %d", (int) this->busy_pin_->digital_read());
   }
 
-  this->cs1_release_hold_();
-  this->dc_pin_->digital_write(false);
-  this->cs1_device_.enable();
-  this->cs1_hold_("POF");
-  this->cs1_device_.write_byte(R02_POF);
-  this->dc_pin_->digital_write(true);
-  this->cs1_device_.write_array(POF_V, sizeof(POF_V));
-
+  // Legacy one-shot implementation kept for other models; T133A01 uses power_off_async_()
+  this->cs1_cmd_data_(R02_POF, POF_V, sizeof(POF_V));
   this->next_delay_ = 30;
+}
+
+bool EPaperT133A01::power_off_async_() {
+  // Vendor EPD_UPDATE(): CS1 low, POF, CHECK_BUSY, CS1 high, delay(30)
+  switch (this->power_off_phase_) {
+    case 0:
+      this->cs1_cmd_data_(R02_POF, POF_V, sizeof(POF_V));
+      this->power_off_phase_ = 1;
+      return false;  // let EPaperBase wait for idle
+    case 1:
+      this->next_delay_ = 30;
+      this->power_off_phase_ = 2;
+      return false;
+    default:
+      this->power_off_phase_ = 0;
+      return true;
+  }
 }
 
 void EPaperT133A01::deep_sleep() {
   ESP_LOGV(TAG, "Deep sleep");
-  this->cs1_release_hold_();
   this->cmd_data(0x07, SLEEP_V, sizeof(SLEEP_V));
 }
 
@@ -374,16 +389,25 @@ bool HOT EPaperT133A01::transfer_data() {
   const size_t half_frame_len = static_cast<size_t>(height) * bytes_per_block_row;
 
   if (!this->transfer_prologue_done_) {
-    // Transfer prologue (equivalent to EPD_PUSH_NEW_COLORS preamble)
-    this->cs1_cmd_data_(RE0_CCSET, CCSET_V_CUR, sizeof(CCSET_V_CUR));
-    this->wait_for_idle_sync_();
-    delay(10);
+    // Transfer prologue (equivalent to EPD_PUSH_NEW_COLORS preamble) without blocking.
+    // Vendor does: CCSET -> CHECK_BUSY -> delay(10)
+    if (this->transfer_prologue_phase_ == 0) {
+      this->cs1_cmd_data_(RE0_CCSET, CCSET_V_CUR, sizeof(CCSET_V_CUR));
+      this->transfer_prologue_phase_ = 1;
+      return false;  // EPaperBase will wait for idle before calling again
+    }
+    if (this->transfer_prologue_phase_ == 1) {
+      this->next_delay_ = 10;
+      this->transfer_prologue_phase_ = 2;
+      return false;
+    }
 
     this->transfer_index_ = 0;
     this->transfer_on_cs1_ = false;
     this->transfer_dtm_sent_ = false;
     this->transfer_streaming_ = false;
     this->transfer_prologue_done_ = true;
+    this->transfer_prologue_phase_ = 0;
   }
 
   // Manufacturer implementation (EPD_PUSH_NEW_COLORS) streams the entire first half (CS),
