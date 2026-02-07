@@ -269,12 +269,16 @@ bool EPaperT133A01::power_on_async_() {
   // Vendor EPD_UPDATE(): CS1 low, PON, CHECK_BUSY, CS1 high, delay(30)
   switch (this->update_phase_) {
     case 0:
-      this->cs1_command_(R04_PON);
+      this->dc_pin_->digital_write(false);
+      this->cs1_device_.enable();
+      this->cs1_device_.write_byte(R04_PON);
+      this->wait_for_idle_(true);
       this->update_phase_ = 1;
       return false;  // let EPaperBase wait for idle in this state
     case 1:
-      // We are idle now (EPaperBase waited). Apply the vendor delay before DRF.
-      this->next_delay_ = 30;
+      // We are idle now. Apply the vendor delay before DRF.
+      this->cs1_device_.disable();
+      this->delay_until_ = millis() + 30;
       this->update_phase_ = 2;
       return false;
     default:
@@ -300,11 +304,17 @@ bool EPaperT133A01::refresh_screen_async_(bool partial) {
   // Vendor EPD_UPDATE(): CS1 low, DRF, CHECK_BUSY, CS1 high, delay(30)
   switch (this->refresh_phase_) {
     case 0:
-      this->cs1_cmd_data_(R12_DRF, DRF_V, sizeof(DRF_V));
+      this->dc_pin_->digital_write(false);
+      this->cs1_device_.enable();
+      this->cs1_device_.write_byte(R12_DRF);
+      this->dc_pin_->digital_write(true);
+      this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
+      this->wait_for_idle_(true);
       this->refresh_phase_ = 1;
       return false;  // let EPaperBase wait for idle
     case 1:
-      this->next_delay_ = 30;
+      this->cs1_device_.disable();
+      this->delay_until_ = millis() + 30;
       this->refresh_phase_ = 2;
       return false;
     default:
@@ -328,11 +338,17 @@ bool EPaperT133A01::power_off_async_() {
   // Vendor EPD_UPDATE(): CS1 low, POF, CHECK_BUSY, CS1 high, delay(30)
   switch (this->power_off_phase_) {
     case 0:
-      this->cs1_cmd_data_(R02_POF, POF_V, sizeof(POF_V));
+      this->dc_pin_->digital_write(false);
+      this->cs1_device_.enable();
+      this->cs1_device_.write_byte(R02_POF);
+      this->dc_pin_->digital_write(true);
+      this->cs1_device_.write_array(POF_V, sizeof(POF_V));
+      this->wait_for_idle_(true);
       this->power_off_phase_ = 1;
       return false;  // let EPaperBase wait for idle
     case 1:
-      this->next_delay_ = 30;
+      this->cs1_device_.disable();
+      this->delay_until_ = millis() + 30;
       this->power_off_phase_ = 2;
       return false;
     default:
@@ -394,10 +410,11 @@ bool HOT EPaperT133A01::transfer_data() {
     if (this->transfer_prologue_phase_ == 0) {
       this->cs1_cmd_data_(RE0_CCSET, CCSET_V_CUR, sizeof(CCSET_V_CUR));
       this->transfer_prologue_phase_ = 1;
+      this->wait_for_idle_(true);
       return false;  // EPaperBase will wait for idle before calling again
     }
     if (this->transfer_prologue_phase_ == 1) {
-      this->next_delay_ = 10;
+      this->delay_until_ = millis() + 10;
       this->transfer_prologue_phase_ = 2;
       return false;
     }
