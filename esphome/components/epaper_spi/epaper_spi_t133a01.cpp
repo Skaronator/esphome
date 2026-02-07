@@ -121,7 +121,7 @@ static constexpr uint8_t color_get(uint8_t nibble) {
 }
 
 void EPaperT133A01::setup() {
-  ESP_LOGI(TAG, "T133A01 driver marker: async-update v2");
+  ESP_LOGI(TAG, "T133A01 driver marker: async-update v3 (dual-CS refresh)");
   EPaperBase::setup();
   if (this->is_failed())
     return;
@@ -278,10 +278,18 @@ bool EPaperT133A01::power_on_async_() {
   switch (this->update_phase_) {
     case 0: {
       ESP_LOGV(TAG, "EPD_UPDATE: PON");
+      // This panel uses dual chip-selects for the two controller halves.
+      // Send power-on to both controllers.
       this->dc_pin_->digital_write(false);
+
+      this->enable();
+      this->write_byte(R04_PON);
+      this->disable();
+
       this->cs1_device_.enable();
       this->cs1_device_.write_byte(R04_PON);
       this->cs1_device_.disable();
+
       this->busy_wait_start_ms_ = millis();
       this->busy_wait_last_log_ms_ = this->busy_wait_start_ms_;
       this->busy_wait_label_ = "PON";
@@ -351,12 +359,22 @@ bool EPaperT133A01::refresh_screen_async_(bool partial) {
   switch (this->refresh_phase_) {
     case 0: {
       ESP_LOGV(TAG, "EPD_UPDATE: DRF");
+      // Send refresh to both controllers.
+      this->dc_pin_->digital_write(false);
+
+      this->enable();
+      this->write_byte(R12_DRF);
+      this->dc_pin_->digital_write(true);
+      this->write_array(DRF_V, sizeof(DRF_V));
+      this->disable();
+
       this->dc_pin_->digital_write(false);
       this->cs1_device_.enable();
       this->cs1_device_.write_byte(R12_DRF);
       this->dc_pin_->digital_write(true);
       this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
       this->cs1_device_.disable();
+
       this->busy_wait_start_ms_ = millis();
       this->busy_wait_last_log_ms_ = this->busy_wait_start_ms_;
       this->busy_wait_label_ = "DRF";
@@ -422,12 +440,22 @@ bool EPaperT133A01::power_off_async_() {
   switch (this->power_off_phase_) {
     case 0: {
       ESP_LOGV(TAG, "EPD_UPDATE: POF");
+      // Send power-off to both controllers.
+      this->dc_pin_->digital_write(false);
+
+      this->enable();
+      this->write_byte(R02_POF);
+      this->dc_pin_->digital_write(true);
+      this->write_array(POF_V, sizeof(POF_V));
+      this->disable();
+
       this->dc_pin_->digital_write(false);
       this->cs1_device_.enable();
       this->cs1_device_.write_byte(R02_POF);
       this->dc_pin_->digital_write(true);
       this->cs1_device_.write_array(POF_V, sizeof(POF_V));
       this->cs1_device_.disable();
+
       this->busy_wait_start_ms_ = millis();
       this->busy_wait_last_log_ms_ = this->busy_wait_start_ms_;
       this->busy_wait_label_ = "POF";
@@ -528,6 +556,8 @@ bool HOT EPaperT133A01::transfer_data() {
     // Transfer prologue (equivalent to EPD_PUSH_NEW_COLORS preamble) without blocking.
     // Vendor does: CCSET -> CHECK_BUSY -> delay(10)
     if (this->transfer_prologue_phase_ == 0) {
+      // Send CCSET to both controllers before streaming pixels.
+      this->cmd_data(RE0_CCSET, CCSET_V_CUR, sizeof(CCSET_V_CUR));
       this->cs1_cmd_data_(RE0_CCSET, CCSET_V_CUR, sizeof(CCSET_V_CUR));
       this->transfer_prologue_phase_ = 1;
       return false;  // EPaperBase will wait for idle before calling again
