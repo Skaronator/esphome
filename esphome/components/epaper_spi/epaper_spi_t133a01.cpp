@@ -107,6 +107,14 @@ void EPaperT133A01::setup() {
   if (this->is_failed())
     return;
 
+  for (uint8_t i = 0; i < this->enable_pins_count_; i++) {
+    auto *pin = this->enable_pins_[i];
+    if (pin == nullptr)
+      continue;
+    pin->setup();
+    pin->digital_write(true);
+  }
+
   if (this->cs1_pin_ == nullptr) {
     this->mark_failed(LOG_STR("'cs1_pin' is required for T133A01"));
     return;
@@ -169,13 +177,7 @@ bool EPaperT133A01::reset() {
 bool EPaperT133A01::initialise(bool partial) {
   (void) partial;
 
-  this->update_phase_ = 0;
-  this->refresh_phase_ = 0;
-  this->power_off_phase_ = 0;
   this->transfer_prologue_phase_ = 0;
-  this->busy_wait_start_ms_ = 0;
-  this->busy_wait_last_log_ms_ = 0;
-  this->busy_wait_label_ = nullptr;
 
   this->send_init_sequence_dual_(this->init_sequence_, this->init_sequence_length_);
   return true;
@@ -236,83 +238,52 @@ void EPaperT133A01::send_init_sequence_dual_(const uint8_t *sequence, size_t len
   }
 }
 
+void EPaperT133A01::wait_for_idle_with_timeout_(uint32_t timeout_ms, const char *label) const {
+  if (this->busy_pin_ == nullptr)
+    return;
+
+  const uint32_t start = millis();
+  uint32_t last_log = start;
+
+  while (!this->is_idle_()) {
+    const uint32_t now = millis();
+    const uint32_t elapsed = now - start;
+    if (elapsed >= timeout_ms) {
+      ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing", label, (unsigned) elapsed);
+      return;
+    }
+    if (now - last_log >= 1000) {
+      last_log = now;
+      ESP_LOGV(TAG, "BUSY waiting (%s): %u ms (pin=%d)", label, (unsigned) elapsed,
+               this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+    }
+    delay(10);
+  }
+
+  ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)", label, (unsigned) (millis() - start),
+           this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
+}
+
 void EPaperT133A01::power_on() {
   ESP_LOGV(TAG, "Power on");
   if (this->busy_pin_ != nullptr) {
     ESP_LOGV(TAG, "BUSY before PON: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // Legacy one-shot implementation kept for other models; T133A01 uses power_on_async_()
-  this->cs1_command_(R04_PON);
-  this->next_delay_ = 0;
-}
+  // This panel uses dual chip-selects for the two controller halves.
+  // Send power-on to both controllers.
+  this->dc_pin_->digital_write(false);
 
-bool EPaperT133A01::power_on_async_() {
-  // Vendor EPD_UPDATE(): CS1 low, PON, CHECK_BUSY, CS1 high, delay(30)
-  switch (this->update_phase_) {
-    case 0: {
-      ESP_LOGV(TAG, "EPD_UPDATE: PON");
-      // This panel uses dual chip-selects for the two controller halves.
-      // Send power-on to both controllers.
-      this->dc_pin_->digital_write(false);
+  this->enable();
+  this->write_byte(R04_PON);
+  this->disable();
 
-      this->enable();
-      this->write_byte(R04_PON);
-      this->disable();
+  this->cs1_device_.enable();
+  this->cs1_device_.write_byte(R04_PON);
+  this->cs1_device_.disable();
 
-      this->cs1_device_.enable();
-      this->cs1_device_.write_byte(R04_PON);
-      this->cs1_device_.disable();
-
-      this->busy_wait_start_ms_ = millis();
-      this->busy_wait_last_log_ms_ = this->busy_wait_start_ms_;
-      this->busy_wait_label_ = "PON";
-      this->update_phase_ = 1;
-      this->delay_until_ = millis() + 10;
-      return false;
-    }
-    case 1: {
-      bool timed_out = false;
-      if (!this->is_idle_()) {
-        const uint32_t now = millis();
-        const uint32_t elapsed = now - this->busy_wait_start_ms_;
-        if (now - this->busy_wait_last_log_ms_ >= 1000) {
-          this->busy_wait_last_log_ms_ = now;
-          ESP_LOGV(TAG, "BUSY waiting (%s): %u ms (pin=%d)", this->busy_wait_label_ ? this->busy_wait_label_ : "?",
-                   (unsigned) elapsed, this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
-        }
-        if (elapsed < PON_BUSY_TIMEOUT_MS) {
-          this->delay_until_ = now + 10;
-          return false;
-        }
-        ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing",
-                 this->busy_wait_label_ ? this->busy_wait_label_ : "PON", (unsigned) elapsed);
-        timed_out = true;
-      }
-
-      {
-        const uint32_t now = millis();
-        const uint32_t elapsed = now - this->busy_wait_start_ms_;
-        if (this->is_idle_()) {
-          ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)",
-                   this->busy_wait_label_ ? this->busy_wait_label_ : "PON", (unsigned) elapsed,
-                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
-        } else if (timed_out) {
-          ESP_LOGV(TAG, "BUSY still active (%s) after %u ms (pin=%d)",
-                   this->busy_wait_label_ ? this->busy_wait_label_ : "PON", (unsigned) elapsed,
-                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
-        }
-      }
-
-      // Idle (or timed out). Apply the vendor delay before DRF.
-      this->delay_until_ = millis() + 30;
-      this->update_phase_ = 2;
-      return false;
-    }
-    default:
-      this->update_phase_ = 0;
-      return true;
-  }
+  this->wait_for_idle_with_timeout_(PON_BUSY_TIMEOUT_MS, "PON");
+  delay(30);
 }
 
 void EPaperT133A01::refresh_screen(bool partial) {
@@ -322,80 +293,24 @@ void EPaperT133A01::refresh_screen(bool partial) {
     ESP_LOGV(TAG, "BUSY before DRF: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // Legacy one-shot implementation kept for other models; T133A01 uses refresh_screen_async_()
-  this->cs1_cmd_data_(R12_DRF, DRF_V, sizeof(DRF_V));
-  this->next_delay_ = 0;
-}
+  // Send refresh to both controllers.
+  this->dc_pin_->digital_write(false);
 
-bool EPaperT133A01::refresh_screen_async_(bool partial) {
-  (void) partial;
-  // Vendor EPD_UPDATE(): CS1 low, DRF, CHECK_BUSY, CS1 high, delay(30)
-  switch (this->refresh_phase_) {
-    case 0: {
-      ESP_LOGV(TAG, "EPD_UPDATE: DRF");
-      // Send refresh to both controllers.
-      this->dc_pin_->digital_write(false);
+  this->enable();
+  this->write_byte(R12_DRF);
+  this->dc_pin_->digital_write(true);
+  this->write_array(DRF_V, sizeof(DRF_V));
+  this->disable();
 
-      this->enable();
-      this->write_byte(R12_DRF);
-      this->dc_pin_->digital_write(true);
-      this->write_array(DRF_V, sizeof(DRF_V));
-      this->disable();
+  this->dc_pin_->digital_write(false);
+  this->cs1_device_.enable();
+  this->cs1_device_.write_byte(R12_DRF);
+  this->dc_pin_->digital_write(true);
+  this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
+  this->cs1_device_.disable();
 
-      this->dc_pin_->digital_write(false);
-      this->cs1_device_.enable();
-      this->cs1_device_.write_byte(R12_DRF);
-      this->dc_pin_->digital_write(true);
-      this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
-      this->cs1_device_.disable();
-
-      this->busy_wait_start_ms_ = millis();
-      this->busy_wait_last_log_ms_ = this->busy_wait_start_ms_;
-      this->busy_wait_label_ = "DRF";
-      this->refresh_phase_ = 1;
-      this->delay_until_ = millis() + 10;
-      return false;
-    }
-    case 1: {
-      bool timed_out = false;
-      if (!this->is_idle_()) {
-        const uint32_t now = millis();
-        const uint32_t elapsed = now - this->busy_wait_start_ms_;
-        if (now - this->busy_wait_last_log_ms_ >= 1000) {
-          this->busy_wait_last_log_ms_ = now;
-          ESP_LOGV(TAG, "BUSY waiting (%s): %u ms (pin=%d)", this->busy_wait_label_ ? this->busy_wait_label_ : "?",
-                   (unsigned) elapsed, this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
-        }
-        if (elapsed < DRF_BUSY_TIMEOUT_MS) {
-          this->delay_until_ = now + 10;
-          return false;
-        }
-        ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing",
-                 this->busy_wait_label_ ? this->busy_wait_label_ : "DRF", (unsigned) elapsed);
-        timed_out = true;
-      }
-
-      {
-        const uint32_t now = millis();
-        const uint32_t elapsed = now - this->busy_wait_start_ms_;
-        if (this->is_idle_()) {
-          ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)",
-                   this->busy_wait_label_ ? this->busy_wait_label_ : "DRF", (unsigned) elapsed,
-                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
-        } else if (timed_out) {
-          ESP_LOGV(TAG, "BUSY still active (%s) after %u ms (pin=%d)",
-                   this->busy_wait_label_ ? this->busy_wait_label_ : "DRF", (unsigned) elapsed,
-                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
-        }
-      }
-      this->delay_until_ = millis() + 30;
-      this->refresh_phase_ = 2;
-      return false;
-    }
-    default:
-      this->refresh_phase_ = 0;
-      return true;
-  }
+  this->wait_for_idle_with_timeout_(DRF_BUSY_TIMEOUT_MS, "DRF");
+  delay(30);
 }
 
 void EPaperT133A01::power_off() {
@@ -404,79 +319,24 @@ void EPaperT133A01::power_off() {
     ESP_LOGV(TAG, "BUSY before POF: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // Legacy one-shot implementation kept for other models; T133A01 uses power_off_async_()
-  this->cs1_cmd_data_(R02_POF, POF_V, sizeof(POF_V));
-  this->next_delay_ = 30;
-}
+  // Send power-off to both controllers.
+  this->dc_pin_->digital_write(false);
 
-bool EPaperT133A01::power_off_async_() {
-  // Vendor EPD_UPDATE(): CS1 low, POF, CHECK_BUSY, CS1 high, delay(30)
-  switch (this->power_off_phase_) {
-    case 0: {
-      ESP_LOGV(TAG, "EPD_UPDATE: POF");
-      // Send power-off to both controllers.
-      this->dc_pin_->digital_write(false);
+  this->enable();
+  this->write_byte(R02_POF);
+  this->dc_pin_->digital_write(true);
+  this->write_array(POF_V, sizeof(POF_V));
+  this->disable();
 
-      this->enable();
-      this->write_byte(R02_POF);
-      this->dc_pin_->digital_write(true);
-      this->write_array(POF_V, sizeof(POF_V));
-      this->disable();
+  this->dc_pin_->digital_write(false);
+  this->cs1_device_.enable();
+  this->cs1_device_.write_byte(R02_POF);
+  this->dc_pin_->digital_write(true);
+  this->cs1_device_.write_array(POF_V, sizeof(POF_V));
+  this->cs1_device_.disable();
 
-      this->dc_pin_->digital_write(false);
-      this->cs1_device_.enable();
-      this->cs1_device_.write_byte(R02_POF);
-      this->dc_pin_->digital_write(true);
-      this->cs1_device_.write_array(POF_V, sizeof(POF_V));
-      this->cs1_device_.disable();
-
-      this->busy_wait_start_ms_ = millis();
-      this->busy_wait_last_log_ms_ = this->busy_wait_start_ms_;
-      this->busy_wait_label_ = "POF";
-      this->power_off_phase_ = 1;
-      this->delay_until_ = millis() + 10;
-      return false;
-    }
-    case 1: {
-      bool timed_out = false;
-      if (!this->is_idle_()) {
-        const uint32_t now = millis();
-        const uint32_t elapsed = now - this->busy_wait_start_ms_;
-        if (now - this->busy_wait_last_log_ms_ >= 1000) {
-          this->busy_wait_last_log_ms_ = now;
-          ESP_LOGV(TAG, "BUSY waiting (%s): %u ms (pin=%d)", this->busy_wait_label_ ? this->busy_wait_label_ : "?",
-                   (unsigned) elapsed, this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
-        }
-        if (elapsed < POF_BUSY_TIMEOUT_MS) {
-          this->delay_until_ = now + 10;
-          return false;
-        }
-        ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing",
-                 this->busy_wait_label_ ? this->busy_wait_label_ : "POF", (unsigned) elapsed);
-        timed_out = true;
-      }
-
-      {
-        const uint32_t now = millis();
-        const uint32_t elapsed = now - this->busy_wait_start_ms_;
-        if (this->is_idle_()) {
-          ESP_LOGV(TAG, "BUSY cleared (%s) after %u ms (pin=%d)",
-                   this->busy_wait_label_ ? this->busy_wait_label_ : "POF", (unsigned) elapsed,
-                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
-        } else if (timed_out) {
-          ESP_LOGV(TAG, "BUSY still active (%s) after %u ms (pin=%d)",
-                   this->busy_wait_label_ ? this->busy_wait_label_ : "POF", (unsigned) elapsed,
-                   this->busy_pin_ != nullptr ? (int) this->busy_pin_->digital_read() : -1);
-        }
-      }
-      this->delay_until_ = millis() + 30;
-      this->power_off_phase_ = 2;
-      return false;
-    }
-    default:
-      this->power_off_phase_ = 0;
-      return true;
-  }
+  this->wait_for_idle_with_timeout_(POF_BUSY_TIMEOUT_MS, "POF");
+  delay(30);
 }
 
 void EPaperT133A01::deep_sleep() {
@@ -555,6 +415,11 @@ bool HOT EPaperT133A01::transfer_data() {
   // the controller auto-incrementing the write address.
   // Interleaving per-row (or re-sending DTM repeatedly) can result in a blank screen.
 
+  // Progress logging: keep it low-noise (every N rows).
+  static constexpr uint16_t ROW_LOG_STEP = 100;
+  uint16_t last_logged_row = 0xFFFF;
+  bool last_logged_cs1 = false;
+
   uint8_t bytes_to_send[MAX_TRANSFER_SIZE];
 
   while (true) {
@@ -581,6 +446,20 @@ bool HOT EPaperT133A01::transfer_data() {
       const size_t pos = this->transfer_index_++;
       const uint16_t row = pos / bytes_per_block_row;
       const uint16_t col = pos % bytes_per_block_row;
+
+      if (row != last_logged_row && (row == 0 || (row % ROW_LOG_STEP) == 0)) {
+        // Note: height is the number of rows.
+        ESP_LOGV(TAG, "Updating row %u/%u (%s)", (unsigned) row, (unsigned) height,
+                 this->transfer_on_cs1_ ? "CS1" : "CS");
+        last_logged_row = row;
+        last_logged_cs1 = this->transfer_on_cs1_;
+      } else if (this->transfer_on_cs1_ != last_logged_cs1) {
+        // When switching halves, make sure we log at least once.
+        ESP_LOGV(TAG, "Updating row %u/%u (%s)", (unsigned) row, (unsigned) height,
+                 this->transfer_on_cs1_ ? "CS1" : "CS");
+        last_logged_row = row;
+        last_logged_cs1 = this->transfer_on_cs1_;
+      }
 
       const size_t base = (static_cast<size_t>(row) * stride) + (this->transfer_on_cs1_ ? bytes_per_block_row : 0);
       const uint8_t b = this->buffer_[base + col];

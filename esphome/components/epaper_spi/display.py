@@ -205,7 +205,9 @@ async def to_code(config):
         cs1 = await cg.gpio_pin_expression(cs1_pin)
         cg.add(var.set_cs1_pin(cs1))
 
-    if enable_pins := config.get(CONF_ENABLE_PIN):
+    if model.class_name == "EPaperT133A01" and (
+        enable_pins := config.get(CONF_ENABLE_PIN)
+    ):
         for pin in enable_pins:
             enable = await cg.gpio_pin_expression(pin)
             cg.add(var.add_enable_pin(enable))

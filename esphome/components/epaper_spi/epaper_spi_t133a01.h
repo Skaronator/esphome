@@ -12,6 +12,12 @@ class EPaperT133A01 : public EPaperBase {
     this->buffer_length_ = width * height / 2;  // 2 pixels per byte
   }
 
+  void add_enable_pin(GPIOPin *enable_pin) {
+    if (this->enable_pins_count_ < MAX_ENABLE_PINS) {
+      this->enable_pins_[this->enable_pins_count_++] = enable_pin;
+    }
+  }
+
   void set_cs1_pin(GPIOPin *cs1_pin) { this->cs1_pin_ = cs1_pin; }
 
   void setup() override;
@@ -22,15 +28,6 @@ class EPaperT133A01 : public EPaperBase {
   void clear() override;
 
  protected:
-  bool should_wait_for_idle_before_state_(EPaperState state) const override {
-    // The T133A01 controller can get stuck with BUSY asserted if DRF never completes.
-    // Allow POWER_OFF to run anyway so the driver can attempt a recovery (with its
-    // own timeout logic) instead of deadlocking the EPaperBase state machine.
-    if (state == EPaperState::POWER_OFF)
-      return false;
-    return EPaperBase::should_wait_for_idle_before_state_(state);
-  }
-
   bool reset() override;
   bool initialise(bool partial) override;
 
@@ -40,19 +37,20 @@ class EPaperT133A01 : public EPaperBase {
   void power_off() override;
   void deep_sleep() override;
 
-  bool power_on_async_() override;
-  bool refresh_screen_async_(bool partial) override;
-  bool power_off_async_() override;
-
   void draw_pixel_at(int x, int y, Color color) override;
 
   void cs1_command_(uint8_t value);
   void cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t length);
   void send_init_sequence_dual_(const uint8_t *sequence, size_t length);
+  void wait_for_idle_with_timeout_(uint32_t timeout_ms, const char *label) const;
 
   GPIOPin *cs1_pin_{};
   spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW, spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_2MHZ>
       cs1_device_{};
+
+  static constexpr uint8_t MAX_ENABLE_PINS = 4;
+  GPIOPin *enable_pins_[MAX_ENABLE_PINS]{};
+  uint8_t enable_pins_count_{0};
 
   // Transfer state (T133A01 uses two controllers/chip-selects; each row is pushed in 2 halves)
   size_t transfer_index_{0};
@@ -60,15 +58,6 @@ class EPaperT133A01 : public EPaperBase {
   bool transfer_dtm_sent_{false};
   bool transfer_prologue_done_{false};
   bool transfer_streaming_{false};
-
-  // Vendor-like update sequencing (EPD_UPDATE): command -> wait BUSY -> delay -> next command
-  uint8_t update_phase_{0};
-  uint8_t refresh_phase_{0};
-  uint8_t power_off_phase_{0};
-
-  uint32_t busy_wait_start_ms_{0};
-  uint32_t busy_wait_last_log_ms_{0};
-  const char *busy_wait_label_{nullptr};
 
   // Transfer prologue sequencing to avoid blocking waits.
   uint8_t transfer_prologue_phase_{0};

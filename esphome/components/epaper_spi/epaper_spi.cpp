@@ -41,14 +41,6 @@ void EPaperBase::setup_pins_() const {
   this->dc_pin_->setup();  // OUTPUT
   this->dc_pin_->digital_write(false);
 
-  for (uint8_t i = 0; i < this->enable_pins_count_; i++) {
-    auto *pin = this->enable_pins_[i];
-    if (pin == nullptr)
-      continue;
-    pin->setup();
-    pin->digital_write(true);
-  }
-
   if (this->reset_pin_ != nullptr) {
     this->reset_pin_->setup();  // OUTPUT
     this->reset_pin_->digital_write(true);
@@ -206,28 +198,20 @@ void EPaperBase::process_state_() {
       this->set_state_(EPaperState::POWER_ON);
       break;
     case EPaperState::POWER_ON:
-      if (!this->power_on_async_()) {
-        return;
-      }
+      this->power_on();
       this->set_state_(EPaperState::REFRESH_SCREEN);
       break;
     case EPaperState::REFRESH_SCREEN:
-      if (!this->refresh_screen_async_(this->update_count_ != 0)) {
-        return;
-      }
+      this->refresh_screen(this->update_count_ != 0);
       this->update_count_ = (this->update_count_ + 1) % this->full_update_every_;
       this->set_state_(EPaperState::POWER_OFF);
       break;
     case EPaperState::POWER_OFF:
-      if (!this->power_off_async_()) {
-        return;
-      }
+      this->power_off();
       this->set_state_(EPaperState::DEEP_SLEEP);
       break;
     case EPaperState::DEEP_SLEEP:
-      if (!this->deep_sleep_async_()) {
-        return;
-      }
+      this->deep_sleep();
       this->set_state_(EPaperState::IDLE);
       ESP_LOGD(TAG, "Display update took %" PRIu32 " ms", millis() - this->update_start_time_);
       break;
@@ -237,7 +221,7 @@ void EPaperBase::process_state_() {
 void EPaperBase::set_state_(EPaperState state, uint16_t delay) {
   ESP_LOGV(TAG, "Exit state %s", this->epaper_state_to_string_());
   this->state_ = state;
-  this->wait_for_idle_(this->should_wait_for_idle_before_state_(state));
+  this->wait_for_idle_(state > EPaperState::SHOULD_WAIT);
   // allow subclasses to nominate delays
   if (delay == 0)
     delay = this->next_delay_;
