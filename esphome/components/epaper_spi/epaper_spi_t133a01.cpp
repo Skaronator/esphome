@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
 namespace esphome::epaper_spi {
@@ -252,6 +253,7 @@ void EPaperT133A01::wait_for_idle_with_timeout_(uint32_t timeout_ms, const char 
       ESP_LOGW(TAG, "BUSY timeout waiting for %s (%u ms), continuing", label, (unsigned) elapsed);
       return;
     }
+    App.feed_wdt(now);
     if (now - last_log >= 1000) {
       last_log = now;
       ESP_LOGV(TAG, "BUSY waiting (%s): %u ms (pin=%d)", label, (unsigned) elapsed,
