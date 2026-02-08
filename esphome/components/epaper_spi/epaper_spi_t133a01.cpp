@@ -2,7 +2,6 @@
 
 #include <algorithm>
 
-#include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
 namespace esphome::epaper_spi {
@@ -23,27 +22,10 @@ static constexpr uint8_t R50_CDI = 0x50;
 static constexpr uint8_t R61_TRES = 0x61;
 static constexpr uint8_t RE0_CCSET = 0xE0;
 static constexpr uint8_t RE3_PWS = 0xE3;
-
-static constexpr uint8_t PSR_V[] = {0xDF, 0x69};
-static constexpr uint8_t PWR_V[] = {0x0F, 0x00, 0x28, 0x2C, 0x28, 0x38};
-static constexpr uint8_t POF_V[] = {0x00};
-static constexpr uint8_t DRF_V[] = {0x01};
-static constexpr uint8_t CDI_V[] = {0x37};
-static constexpr uint8_t TRES_V[] = {0x04, 0xB0, 0x03, 0x20};
-static constexpr uint8_t PWS_V[] = {0x22};
-static constexpr uint8_t BTST_P_V[] = {0xD8, 0x18};
-static constexpr uint8_t BTST_N_V[] = {0xD8, 0x18};
 static constexpr uint8_t SLEEP_V[] = {0xA5};
 
-static constexpr uint8_t R74_DATA[] = {0xC0, 0x1C, 0x1C, 0xCC, 0xCC, 0xCC, 0x15, 0x15, 0x55};
-static constexpr uint8_t RF0_DATA[] = {0x49, 0x55, 0x13, 0x5D, 0x05, 0x10};
-static constexpr uint8_t R60_DATA[] = {0x03, 0x03};
-static constexpr uint8_t R86_DATA[] = {0x10};
-static constexpr uint8_t RB6_DATA[] = {0x07};
-static constexpr uint8_t RB7_DATA[] = {0x01};
-static constexpr uint8_t RB0_DATA[] = {0x01};
-static constexpr uint8_t RB1_DATA[] = {0x02};
-
+static constexpr uint8_t POF_V[] = {0x00};
+static constexpr uint8_t DRF_V[] = {0x01};
 static constexpr uint8_t CCSET_V_CUR[] = {0x01};
 
 static constexpr uint32_t PON_BUSY_TIMEOUT_MS = 10 * 1000;
@@ -121,7 +103,6 @@ static constexpr uint8_t color_get(uint8_t nibble) {
 }
 
 void EPaperT133A01::setup() {
-  ESP_LOGI(TAG, "T133A01 driver marker: async-update v3 (dual-CS refresh)");
   EPaperBase::setup();
   if (this->is_failed())
     return;
@@ -142,26 +123,6 @@ void EPaperT133A01::setup() {
   this->cs1_device_.set_mode(this->mode_);
   this->cs1_device_.set_write_only(true);
   this->cs1_device_.spi_setup();
-}
-
-void EPaperT133A01::wait_for_idle_sync_() const {
-  if (this->busy_pin_ == nullptr)
-    return;
-  const uint32_t start = millis();
-  bool printed_waiting = false;
-  while (this->busy_pin_->digital_read()) {
-    if (!printed_waiting) {
-      ESP_LOGV(TAG, "Waiting for BUSY to clear...");
-      printed_waiting = true;
-    }
-    delay(10);
-    if (printed_waiting && (millis() - start) >= 5000 && ((millis() - start) % 1000) < 20) {
-      ESP_LOGV(TAG, "Still BUSY after %u ms", (unsigned) (millis() - start));
-    }
-  }
-  if (printed_waiting) {
-    ESP_LOGV(TAG, "BUSY cleared after %u ms", (unsigned) (millis() - start));
-  }
 }
 
 void EPaperT133A01::cs1_command_(uint8_t value) {
@@ -187,8 +148,8 @@ void EPaperT133A01::cs1_cmd_data_(uint8_t command, const uint8_t *data, size_t l
 void EPaperT133A01::dump_config() {
   EPaperBase::dump_config();
   LOG_PIN("  CS1 Pin: ", this->cs1_pin_);
-  for (auto *pin : this->enable_pins_) {
-    LOG_PIN("  Enable Pin: ", pin);
+  for (uint8_t i = 0; i < this->enable_pins_count_; i++) {
+    LOG_PIN("  Enable Pin: ", this->enable_pins_[i]);
   }
 }
 
@@ -216,68 +177,62 @@ bool EPaperT133A01::initialise(bool partial) {
   this->busy_wait_last_log_ms_ = 0;
   this->busy_wait_label_ = nullptr;
 
-  // Sequence adapted from Seeed_GFX T133A01_Defines.h (EPD_INIT)
-  this->wait_for_idle_sync_();
+  this->send_init_sequence_dual_(this->init_sequence_, this->init_sequence_length_);
+  return true;
+}
 
-  if (this->busy_pin_ != nullptr) {
-    ESP_LOGV(TAG, "BUSY before init: %d", (int) this->busy_pin_->digital_read());
+void EPaperT133A01::send_init_sequence_dual_(const uint8_t *sequence, size_t length) {
+  // The T133A01 panel uses two controller halves (CS + CS1). The vendor init sequence
+  // issues some commands on CS1 and later commands on CS. In practice we mirror the
+  // early setup commands to both controllers and keep the remainder on CS only.
+  //
+  // The init sequence is provided from Python (flattened like other epaper_spi models).
+  if (sequence == nullptr || length == 0) {
+    this->mark_failed(LOG_STR("Missing init sequence"));
+    return;
   }
 
-  // 0x74 is sent on CS (primary)
-  this->cmd_data(0x74, R74_DATA, sizeof(R74_DATA));
+  auto mirror_to_cs1 = [](uint8_t cmd) -> bool {
+    switch (cmd) {
+      case 0xF0:
+      case R00_PSR:
+      case R50_CDI:
+      case 0x60:
+      case 0x86:
+      case RE3_PWS:
+      case R61_TRES:
+        return true;
+      default:
+        return false;
+    }
+  };
 
-  // Remaining init commands are sent on CS1 in the manufacturer code.
-  // In practice, this panel is driven by two controller halves (CS + CS1). We send
-  // the same init sequence to both to avoid one half being left in a different state.
-  this->cmd_data(0xF0, RF0_DATA, sizeof(RF0_DATA));
-  delay(10);
-  this->cmd_data(R00_PSR, PSR_V, sizeof(PSR_V));
-  delay(10);
-  this->cmd_data(R50_CDI, CDI_V, sizeof(CDI_V));
-  delay(10);
-  this->cmd_data(0x60, R60_DATA, sizeof(R60_DATA));
-  delay(10);
-  this->cmd_data(0x86, R86_DATA, sizeof(R86_DATA));
-  delay(10);
-  this->cmd_data(RE3_PWS, PWS_V, sizeof(PWS_V));
-  delay(10);
-  this->cmd_data(R61_TRES, TRES_V, sizeof(TRES_V));
-  delay(10);
+  size_t index = 0;
+  while (index != length) {
+    if (length - index < 2) {
+      this->mark_failed(LOG_STR("Malformed init sequence"));
+      return;
+    }
+    const uint8_t cmd = sequence[index++];
+    if (const uint8_t x = sequence[index++]; x == DELAY_FLAG) {
+      ESP_LOGV(TAG, "Delay %dms", cmd);
+      delay(cmd);
+      continue;
+    }
 
-  // CS1 init sequence
-  this->cs1_cmd_data_(0xF0, RF0_DATA, sizeof(RF0_DATA));
-  delay(10);
-  this->cs1_cmd_data_(R00_PSR, PSR_V, sizeof(PSR_V));
-  delay(10);
-  this->cs1_cmd_data_(R50_CDI, CDI_V, sizeof(CDI_V));
-  delay(10);
-  this->cs1_cmd_data_(0x60, R60_DATA, sizeof(R60_DATA));
-  delay(10);
-  this->cs1_cmd_data_(0x86, R86_DATA, sizeof(R86_DATA));
-  delay(10);
-  this->cs1_cmd_data_(RE3_PWS, PWS_V, sizeof(PWS_V));
-  delay(10);
-  this->cs1_cmd_data_(R61_TRES, TRES_V, sizeof(TRES_V));
-  delay(10);
+    const uint8_t num_args = x & 0x7F;
+    if (length - index < num_args) {
+      ESP_LOGE(TAG, "Malformed init sequence, cmd = %X, num_args = %u", cmd, num_args);
+      this->mark_failed();
+      return;
+    }
 
-  // Note: In the manufacturer macro EPD_INIT(), commands after TRES are issued with CS1 deasserted,
-  // so they are sent on the primary CS.
-  this->cmd_data(R01_PWR, PWR_V, sizeof(PWR_V));
-  delay(10);
-  this->cmd_data(0xB6, RB6_DATA, sizeof(RB6_DATA));
-  delay(10);
-  this->cmd_data(R06_BTST_P, BTST_P_V, sizeof(BTST_P_V));
-  delay(10);
-  this->cmd_data(0xB7, RB7_DATA, sizeof(RB7_DATA));
-  delay(10);
-  this->cmd_data(R05_BTST_N, BTST_N_V, sizeof(BTST_N_V));
-  delay(10);
-  this->cmd_data(0xB0, RB0_DATA, sizeof(RB0_DATA));
-  delay(10);
-  this->cmd_data(0xB1, RB1_DATA, sizeof(RB1_DATA));
-  delay(10);
-
-  return true;
+    this->cmd_data(cmd, sequence + index, num_args);
+    if (mirror_to_cs1(cmd)) {
+      this->cs1_cmd_data_(cmd, sequence + index, num_args);
+    }
+    index += num_args;
+  }
 }
 
 void EPaperT133A01::power_on() {

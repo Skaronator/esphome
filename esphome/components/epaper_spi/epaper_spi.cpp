@@ -41,7 +41,8 @@ void EPaperBase::setup_pins_() const {
   this->dc_pin_->setup();  // OUTPUT
   this->dc_pin_->digital_write(false);
 
-  for (auto *pin : this->enable_pins_) {
+  for (uint8_t i = 0; i < this->enable_pins_count_; i++) {
+    auto *pin = this->enable_pins_[i];
     if (pin == nullptr)
       continue;
     pin->setup();
