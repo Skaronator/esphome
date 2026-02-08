@@ -5,8 +5,6 @@
 #include "esphome/components/split_buffer/split_buffer.h"
 #include "esphome/core/component.h"
 
-#include <vector>
-
 namespace esphome::epaper_spi {
 using namespace display;
 
@@ -49,7 +47,11 @@ class EPaperBase : public Display,
     this->row_width_ = (this->width_ + 7) / 8;  // width of a row in bytes
   }
   void set_dc_pin(GPIOPin *dc_pin) { dc_pin_ = dc_pin; }
-  void add_enable_pin(GPIOPin *enable_pin) { this->enable_pins_.push_back(enable_pin); }
+  void add_enable_pin(GPIOPin *enable_pin) {
+    if (this->enable_pins_count_ < MAX_ENABLE_PINS) {
+      this->enable_pins_[this->enable_pins_count_++] = enable_pin;
+    }
+  }
   float get_setup_priority() const override;
   void set_reset_pin(GPIOPin *reset) { this->reset_pin_ = reset; }
   void set_busy_pin(GPIOPin *busy) { this->busy_pin_ = busy; }
@@ -194,7 +196,9 @@ class EPaperBase : public Display,
   GPIOPin *dc_pin_{};
   GPIOPin *busy_pin_{};
   GPIOPin *reset_pin_{};
-  std::vector<GPIOPin *> enable_pins_{};
+  static constexpr uint8_t MAX_ENABLE_PINS = 4;
+  GPIOPin *enable_pins_[MAX_ENABLE_PINS]{};
+  uint8_t enable_pins_count_{0};
   bool waiting_for_idle_{};
   uint32_t delay_until_{};  // timestamp until which to delay processing
   uint16_t next_delay_{};   // milliseconds to delay before next state

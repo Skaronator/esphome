@@ -214,13 +214,14 @@ void EPaperT133A01::send_init_sequence_dual_(const uint8_t *sequence, size_t len
       return;
     }
     const uint8_t cmd = sequence[index++];
-    if (const uint8_t x = sequence[index++]; x == DELAY_FLAG) {
+    const uint8_t len_or_flag = sequence[index++];
+    if (len_or_flag == DELAY_FLAG) {
       ESP_LOGV(TAG, "Delay %dms", cmd);
       delay(cmd);
       continue;
     }
 
-    const uint8_t num_args = x & 0x7F;
+    const uint8_t num_args = len_or_flag & 0x7F;
     if (length - index < num_args) {
       ESP_LOGE(TAG, "Malformed init sequence, cmd = %X, num_args = %u", cmd, num_args);
       this->mark_failed();
