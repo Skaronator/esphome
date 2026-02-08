@@ -272,19 +272,10 @@ void EPaperT133A01::power_on() {
     ESP_LOGV(TAG, "BUSY before PON: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // This panel uses dual chip-selects for the two controller halves.
-  // Send power-on to both controllers.
-  this->dc_pin_->digital_write(false);
-
-  this->enable();
-  this->write_byte(R04_PON);
-  this->disable();
-
-  this->cs1_device_.enable();
-  this->cs1_device_.write_byte(R04_PON);
-  this->cs1_device_.disable();
-
+  this->cs1_pin_->digital_write(false);
+  this->command(R04_PON);
   this->wait_for_idle_with_timeout_(PON_BUSY_TIMEOUT_MS, "PON");
+  this->cs1_pin_->digital_write(true);
   delay(30);
 }
 
@@ -295,23 +286,10 @@ void EPaperT133A01::refresh_screen(bool partial) {
     ESP_LOGV(TAG, "BUSY before DRF: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // Send refresh to both controllers.
-  this->dc_pin_->digital_write(false);
-
-  this->enable();
-  this->write_byte(R12_DRF);
-  this->dc_pin_->digital_write(true);
-  this->write_array(DRF_V, sizeof(DRF_V));
-  this->disable();
-
-  this->dc_pin_->digital_write(false);
-  this->cs1_device_.enable();
-  this->cs1_device_.write_byte(R12_DRF);
-  this->dc_pin_->digital_write(true);
-  this->cs1_device_.write_array(DRF_V, sizeof(DRF_V));
-  this->cs1_device_.disable();
-
+  this->cs1_pin_->digital_write(false);
+  this->cmd_data(R12_DRF, DRF_V, sizeof(DRF_V));
   this->wait_for_idle_with_timeout_(DRF_BUSY_TIMEOUT_MS, "DRF");
+  this->cs1_pin_->digital_write(true);
   delay(30);
 }
 
@@ -321,23 +299,10 @@ void EPaperT133A01::power_off() {
     ESP_LOGV(TAG, "BUSY before POF: %d", (int) this->busy_pin_->digital_read());
   }
 
-  // Send power-off to both controllers.
-  this->dc_pin_->digital_write(false);
-
-  this->enable();
-  this->write_byte(R02_POF);
-  this->dc_pin_->digital_write(true);
-  this->write_array(POF_V, sizeof(POF_V));
-  this->disable();
-
-  this->dc_pin_->digital_write(false);
-  this->cs1_device_.enable();
-  this->cs1_device_.write_byte(R02_POF);
-  this->dc_pin_->digital_write(true);
-  this->cs1_device_.write_array(POF_V, sizeof(POF_V));
-  this->cs1_device_.disable();
-
+  this->cs1_pin_->digital_write(false);
+  this->cmd_data(R02_POF, POF_V, sizeof(POF_V));
   this->wait_for_idle_with_timeout_(POF_BUSY_TIMEOUT_MS, "POF");
+  this->cs1_pin_->digital_write(true);
   delay(30);
 }
 
