@@ -1,6 +1,5 @@
 #include "image.h"
 
-#include "esphome/core/application.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
 
@@ -12,7 +11,6 @@ void Image::draw(int x, int y, display::Display *display, Color color_on, Color 
   int img_y0 = 0;
   int w = width_;
   int h = height_;
-  uint32_t pixel_counter = 0;
 
   auto clipping = display->get_clipping();
   if (clipping.is_set()) {
@@ -34,10 +32,6 @@ void Image::draw(int x, int y, display::Display *display, Color color_on, Color 
             display->draw_pixel_at(x + img_x, y + img_y, color_on);
           } else if (!this->transparency_) {
             display->draw_pixel_at(x + img_x, y + img_y, color_off);
-          }
-          // Feed watchdog every 1024 pixels to avoid long blocking draw loops.
-          if ((pixel_counter++ & 0x3FF) == 0) {
-            App.feed_wdt();
           }
         }
       }
@@ -67,10 +61,6 @@ void Image::draw(int x, int y, display::Display *display, Color color_on, Color 
               break;
           }
           display->draw_pixel_at(x + img_x, y + img_y, color);
-          // Feed watchdog every 1024 pixels to avoid long blocking draw loops.
-          if ((pixel_counter++ & 0x3FF) == 0) {
-            App.feed_wdt();
-          }
         }
       }
       break;
@@ -81,10 +71,6 @@ void Image::draw(int x, int y, display::Display *display, Color color_on, Color 
           if (color.w >= 0x80) {
             display->draw_pixel_at(x + img_x, y + img_y, color);
           }
-          // Feed watchdog every 1024 pixels to avoid long blocking draw loops.
-          if ((pixel_counter++ & 0x3FF) == 0) {
-            App.feed_wdt();
-          }
         }
       }
       break;
@@ -94,10 +80,6 @@ void Image::draw(int x, int y, display::Display *display, Color color_on, Color 
           auto color = this->get_rgb_pixel_(img_x, img_y);
           if (color.w >= 0x80) {
             display->draw_pixel_at(x + img_x, y + img_y, color);
-          }
-          // Feed watchdog every 1024 pixels to avoid long blocking draw loops.
-          if ((pixel_counter++ & 0x3FF) == 0) {
-            App.feed_wdt();
           }
         }
       }
